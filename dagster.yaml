@@ -19,16 +19,25 @@ run_launcher:
   class: DockerRunLauncher
   config:
     env_vars:
+      # Postgres
       - DAGSTER_POSTGRES_USER
       - DAGSTER_POSTGRES_PASSWORD
       - DAGSTER_POSTGRES_DB
       - DAGSTER_POSTGRES_HOST
+      # MinIO/S3
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - S3_ENDPOINT_URL
+      # Buckets
+      - S3_BRONZE_BUCKET
+      - S3_SILVER_BUCKET
+      - S3_GOLD_BUCKET
+      - S3_LANDING_BUCKET      # Required Landing bucket for IO manager
     network: ateda_network
     container_kwargs:
       auto_remove: true
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
-        - /tmp/dagster_io_manager_storage:/tmp/dagster_io_manager_storage
 
 # Optional: configure telemetry
 telemetry:
