@@ -5,9 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "dagster>=1.10.9",
     "psycopg2-binary>=2.9.10",
+    "boto3>=1.37.31",
+    "requests>=2.32.3",
+    "dagster>=1.10.9",
     "dagster-postgres>=0.26.9",
+    "dagster-aws>=0.26.9",
 ]
 license = { text = "MIT" }
 
