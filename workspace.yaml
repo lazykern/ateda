@@ -1,5 +1,5 @@
 load_from:
   - grpc_server:
-      host: dagster_grpc_server
+      host: {env: DAGSTER_GRPC_HOST}
       port: 4000
       location_name: "ateda_code_location"

@@ -1,0 +1,163 @@
+x-dagster-common: &dagster-common
+  environment:
+    DAGSTER_HOME: /opt/dagster/dagster_home
+    # Read from .env
+    DAGSTER_POSTGRES_USER: "${POSTGRES_USER}"
+    DAGSTER_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    DAGSTER_POSTGRES_DB: "${POSTGRES_DB}"
+    DAGSTER_POSTGRES_HOST: "postgres" # Service name is fixed
+    S3_ENDPOINT_URL: "http://minio:9000" # Endpoint is fixed
+    AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+    AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+    DAGSTER_GRPC_HOST: "${DAGSTER_GRPC_HOST}" # Pass this through
+    # Pass the specific buckets needed
+    S3_BRONZE_BUCKET: "${S3_BRONZE_BUCKET}"
+    S3_SILVER_BUCKET: "${S3_SILVER_BUCKET}"
+    S3_GOLD_BUCKET: "${S3_GOLD_BUCKET}"
+    S3_LANDING_BUCKET: "${S3_LANDING_BUCKET}" # Required
+  networks:
+    - ateda_network
+  volumes:
+    - ../../workspace.yaml:/opt/dagster/dagster_home/workspace.yaml
+    - ../../dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
+    - /var/run/docker.sock:/var/run/docker.sock
+  depends_on:
+    postgres:
+      condition: service_healthy
+    dagster_grpc_server:
+      condition: service_started
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      # Read from .env
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    networks:
+      - ateda_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+    command: server /data --console-address ":9001"
+    networks:
+      - ateda_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for MinIO...' &&
+      /usr/bin/mc config host add localminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      echo 'Attempting to create buckets: ${S3_LANDING_BUCKET}, ${S3_BRONZE_BUCKET}, ${S3_SILVER_BUCKET}, ${S3_GOLD_BUCKET}' &&
+      /usr/bin/mc mb --ignore-existing localminio/${S3_LANDING_BUCKET} &&
+      /usr/bin/mc mb --ignore-existing localminio/${S3_BRONZE_BUCKET} &&
+      /usr/bin/mc mb --ignore-existing localminio/${S3_SILVER_BUCKET} &&
+      /usr/bin/mc mb --ignore-existing localminio/${S3_GOLD_BUCKET} &&
+      echo 'MinIO setup complete.' &&
+      exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+      # Pass all bucket names for creation
+      S3_LANDING_BUCKET: "${S3_LANDING_BUCKET}"
+      S3_BRONZE_BUCKET: "${S3_BRONZE_BUCKET}"
+      S3_SILVER_BUCKET: "${S3_SILVER_BUCKET}"
+      S3_GOLD_BUCKET: "${S3_GOLD_BUCKET}"
+    networks:
+      - ateda_network
+
+  dagster_grpc_server:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/dagster_user_code.Dockerfile
+    image: ateda-dagster-user-code
+    container_name: dagster_grpc_server
+    restart: always
+    environment:
+      # Read from .env (or passed via dagster-common)
+      DAGSTER_POSTGRES_USER: "${POSTGRES_USER}"
+      DAGSTER_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      DAGSTER_POSTGRES_DB: "${POSTGRES_DB}"
+      DAGSTER_POSTGRES_HOST: "postgres"
+      DAGSTER_CURRENT_IMAGE: "ateda-dagster-user-code"
+      S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+      # Pass the specific buckets needed
+      S3_BRONZE_BUCKET: "${S3_BRONZE_BUCKET}"
+      S3_SILVER_BUCKET: "${S3_SILVER_BUCKET}"
+      S3_GOLD_BUCKET: "${S3_GOLD_BUCKET}"
+      S3_LANDING_BUCKET: "${S3_LANDING_BUCKET}" # Required
+    networks:
+      - ateda_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dagster_daemon:
+    <<: *dagster-common
+    build:
+      context: ../..
+      dockerfile: deployment/docker/dagster_system.Dockerfile
+    image: ateda-dagster-system
+    entrypoint:
+      [
+        "dagster-daemon",
+        "run",
+      ]
+    container_name: dagster_daemon
+    restart: on-failure
+
+  dagster_webserver:
+    <<: *dagster-common
+    build:
+      context: ../..
+      dockerfile: deployment/docker/dagster_system.Dockerfile
+    image: ateda-dagster-system
+    entrypoint:
+      [
+        "dagster-webserver",
+        "-h",
+        "0.0.0.0",
+        "-p",
+        "3000",
+      ]
+    container_name: dagster_webserver
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  minio_data: {}
+
+networks:
+  ateda_network:
+    driver: bridge
+    name: ateda_network
