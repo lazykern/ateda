@@ -6,13 +6,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --upgrade pip && pip install uv
 
-WORKDIR /opt/ateda_platform
+WORKDIR /app
 
 COPY pyproject.toml README.md* ./
 
 RUN uv pip install . --system --no-cache
 
-COPY src/ateda_platform ./ateda_platform
+# Copy the entire src directory generically
+COPY src /app/src 
+
+# Add the source directory to PYTHONPATH so modules can be found
+ENV PYTHONPATH="${PYTHONPATH}:/app/src"
 
 EXPOSE 4000
 

@@ -16,7 +16,7 @@ compose-build: ## Build or rebuild Docker Compose services
 	$(COMPOSE_CMD) build $(ARGS)
 
 .PHONY: compose-up
-compose-up: ## Start Docker Compose services in detached mode
+compose-up: compose-build ## Start Docker Compose services in detached mode
 	@echo "Starting Docker Compose stack..."
 	$(COMPOSE_CMD) up $(ARGS)
 
@@ -34,7 +34,8 @@ compose-stop: ## Stop Docker Compose services without removing them
 	$(COMPOSE_CMD) stop $(ARGS)
 
 .PHONY: compose-restart
-compose-restart: compose-stop compose-up ## Restart Docker Compose services
+compose-restart: ## Restart Docker Compose services
+	$(COMPOSE_CMD) restart $(ARGS)
 
 .PHONY: compose-logs
 compose-logs: ## View logs from Docker Compose services (use ARGS=service_name or ARGS="-f service_name")

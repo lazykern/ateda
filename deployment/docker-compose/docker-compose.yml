@@ -1,35 +1,9 @@
-x-dagster-common: &dagster-common
-  environment:
-    DAGSTER_HOME: /opt/dagster/dagster_home
-    # Read from .env
-    DAGSTER_POSTGRES_USER: "${POSTGRES_USER}"
-    DAGSTER_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-    DAGSTER_POSTGRES_DB: "${POSTGRES_DB}"
-    DAGSTER_POSTGRES_HOST: "postgres" # Service name is fixed
-    S3_ENDPOINT_URL: "http://minio:9000" # Endpoint is fixed
-    AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
-    AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
-    DAGSTER_GRPC_HOST: "${DAGSTER_GRPC_HOST}" # Pass this through
-    # Pass the specific buckets needed
-    S3_BRONZE_BUCKET: "${S3_BRONZE_BUCKET}"
-    S3_SILVER_BUCKET: "${S3_SILVER_BUCKET}"
-    S3_GOLD_BUCKET: "${S3_GOLD_BUCKET}"
-    S3_LANDING_BUCKET: "${S3_LANDING_BUCKET}" # Required
-  networks:
-    - ateda_network
-  volumes:
-    - ../../workspace.yaml:/opt/dagster/dagster_home/workspace.yaml
-    - ../../dagster.yaml:/opt/dagster/dagster_home/dagster.yaml
-    - /var/run/docker.sock:/var/run/docker.sock
-  depends_on:
-    postgres:
-      condition: service_healthy
-    dagster_grpc_server:
-      condition: service_started
-
 services:
   postgres:
     image: postgres:13
+    container_name: postgres # Added for easier reference if needed
+    ports: # Ensure port is exposed to host
+      - "5432:5432"
     environment:
       # Read from .env
       POSTGRES_USER: "${POSTGRES_USER}"
@@ -40,7 +14,7 @@ services:
     networks:
       - ateda_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"] # Use env vars
       interval: 10s
       timeout: 5s
       retries: 5
@@ -73,7 +47,8 @@ services:
     entrypoint: >
       /bin/sh -c "
       echo 'Waiting for MinIO...' &&
-      /usr/bin/mc config host add localminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      until /usr/bin/mc config host add localminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do echo '...waiting...' && sleep 1; done &&
+      echo 'MinIO host configured.' &&
       echo 'Attempting to create buckets: ${S3_LANDING_BUCKET}, ${S3_BRONZE_BUCKET}, ${S3_SILVER_BUCKET}, ${S3_GOLD_BUCKET}' &&
       /usr/bin/mc mb --ignore-existing localminio/${S3_LANDING_BUCKET} &&
       /usr/bin/mc mb --ignore-existing localminio/${S3_BRONZE_BUCKET} &&
@@ -92,66 +67,6 @@ services:
       S3_GOLD_BUCKET: "${S3_GOLD_BUCKET}"
     networks:
       - ateda_network
-
-  dagster_grpc_server:
-    build:
-      context: ../..
-      dockerfile: deployment/docker/dagster_user_code.Dockerfile
-    image: ateda-dagster-user-code
-    container_name: dagster_grpc_server
-    restart: always
-    environment:
-      # Read from .env (or passed via dagster-common)
-      DAGSTER_POSTGRES_USER: "${POSTGRES_USER}"
-      DAGSTER_POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      DAGSTER_POSTGRES_DB: "${POSTGRES_DB}"
-      DAGSTER_POSTGRES_HOST: "postgres"
-      DAGSTER_CURRENT_IMAGE: "ateda-dagster-user-code"
-      S3_ENDPOINT_URL: "http://minio:9000"
-      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
-      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
-      # Pass the specific buckets needed
-      S3_BRONZE_BUCKET: "${S3_BRONZE_BUCKET}"
-      S3_SILVER_BUCKET: "${S3_SILVER_BUCKET}"
-      S3_GOLD_BUCKET: "${S3_GOLD_BUCKET}"
-      S3_LANDING_BUCKET: "${S3_LANDING_BUCKET}" # Required
-    networks:
-      - ateda_network
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  dagster_daemon:
-    <<: *dagster-common
-    build:
-      context: ../..
-      dockerfile: deployment/docker/dagster_system.Dockerfile
-    image: ateda-dagster-system
-    entrypoint:
-      [
-        "dagster-daemon",
-        "run",
-      ]
-    container_name: dagster_daemon
-    restart: on-failure
-
-  dagster_webserver:
-    <<: *dagster-common
-    build:
-      context: ../..
-      dockerfile: deployment/docker/dagster_system.Dockerfile
-    image: ateda-dagster-system
-    entrypoint:
-      [
-        "dagster-webserver",
-        "-h",
-        "0.0.0.0",
-        "-p",
-        "3000",
-      ]
-    container_name: dagster_webserver
-    ports:
-      - "3000:3000"
 
 volumes:
   postgres_data:

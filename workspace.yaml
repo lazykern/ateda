@@ -1,5 +1,4 @@
 load_from:
-  - grpc_server:
-      host: {env: DAGSTER_GRPC_HOST}
-      port: 4000
+  - python_module:
+      module_name: ateda_platform.definitions
       location_name: "ateda_code_location"

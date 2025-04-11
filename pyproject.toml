@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "psycopg2-binary>=2.9.10",
-    "boto3>=1.37.31",
+    "boto3>=1.37.32",
     "requests>=2.32.3",
     "dagster>=1.10.9",
     "dagster-postgres>=0.26.9",
@@ -31,3 +31,7 @@ dev-dependencies = []
 [tool.hatch.build.targets.wheel]
 # Tell hatch where the package code lives within the src layout
 packages = ["src/ateda_platform"]
+
+# Add this section for dagster dev convenience
+[tool.dagster]
+module_name = "ateda_platform.definitions"

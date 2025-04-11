@@ -178,4 +178,4 @@ def raw_ztf_avro_alert_files(context: AssetExecutionContext, alert_tarball: Path
         logger.error(f"An unexpected error occurred during extraction/upload: {e}")
         raise
     # No finally block needed here - the IO Manager handles the lifecycle
-    # of the file in shared storage. 
+    # of the file in shared storage.
