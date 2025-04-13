@@ -6,20 +6,18 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "psycopg2-binary>=2.9.10",
-    "boto3>=1.37.32",
+    "boto3>=1.37.33",
     "requests>=2.32.3",
-    "dagster>=1.10.9",
-    "dagster-postgres>=0.26.9",
-    "dagster-aws>=0.26.9",
+    "dagster>=1.10.10",
+    "dagster-postgres>=0.26.10",
+    "dagster-aws>=0.26.10",
+    "dagster-graphql>=1.10.10",
+    "dagster-webserver>=1.10.10",
+    "dagster-docker>=0.26.10",
+    "dagster-pipes>=0.24.0",
+    "pyspark>=3.5.5",
 ]
 license = { text = "MIT" }
-
-[project.optional-dependencies]
-infra = [
-    "dagster-graphql>=1.10.9",
-    "dagster-webserver>=1.10.9",
-    "dagster-docker>=0.26.9",
-]
 
 [build-system]
 requires = ["hatchling"]
@@ -29,9 +27,7 @@ build-backend = "hatchling.build"
 dev-dependencies = []
 
 [tool.hatch.build.targets.wheel]
-# Tell hatch where the package code lives within the src layout
 packages = ["src/ateda_platform"]
 
-# Add this section for dagster dev convenience
 [tool.dagster]
 module_name = "ateda_platform.definitions"
