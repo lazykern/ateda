@@ -4,14 +4,13 @@ import os
 import subprocess # Needed for calling aria2c
 import tarfile
 import logging
-from dagster import asset, get_dagster_logger, Output, AssetIn, AssetExecutionContext
+from dagster import DailyPartitionsDefinition, asset, get_dagster_logger, Output, AssetIn, AssetExecutionContext
 from dagster_aws.s3 import S3Resource
 from io import BytesIO
 import tempfile
 from pathlib import Path
 from datetime import date
 import shutil # For directory cleanup
-from ateda_platform.partitions import daily_partitions
 
 # Use the UW public alert archive URL
 ZTF_ALERT_ARCHIVE_BASE_URL = "https://ztf.uw.edu/alerts/public"
@@ -19,6 +18,8 @@ ZTF_ALERT_ARCHIVE_BASE_URL = "https://ztf.uw.edu/alerts/public"
 BRONZE_ZTF_ALERTS_DATE_PREFIX = "ztf_alerts"
 # Keep prefix for MinIO simple, the tarball structure will handle subdirs
 ZTF_RAW_PREFIX = "alerts"
+
+daily_partitions = DailyPartitionsDefinition(start_date="2018-06-01")
 
 logger = get_dagster_logger()
 
