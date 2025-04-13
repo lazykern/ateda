@@ -1,60 +1,18 @@
-# dagster.yaml
-# Use the shorthand for Postgres storage configuration
 storage:
   postgres:
     postgres_db:
       username:
-        env: DAGSTER_POSTGRES_USER
+        env: POSTGRES_USER
       password:
-        env: DAGSTER_POSTGRES_PASSWORD
+        env: POSTGRES_PASSWORD
       hostname:
-        env: DAGSTER_POSTGRES_HOST
+        env: POSTGRES_HOST
       db_name:
-        env: DAGSTER_POSTGRES_DB
-      # port: 5432 # Default is usually fine
-
-# Optional: uncomment to enable DockerRunLauncher if needed later
-run_launcher:
-  module: dagster_docker
-  class: DockerRunLauncher
-  config:
-    env_vars:
-      # Postgres
-      - DAGSTER_POSTGRES_USER
-      - DAGSTER_POSTGRES_PASSWORD
-      - DAGSTER_POSTGRES_DB
-      - DAGSTER_POSTGRES_HOST
-      # MinIO/S3
-      - AWS_ACCESS_KEY_ID
-      - AWS_SECRET_ACCESS_KEY
-      - S3_ENDPOINT_URL
-      # Buckets
-      - S3_BRONZE_BUCKET
-      - S3_SILVER_BUCKET
-      - S3_GOLD_BUCKET
-      - S3_LANDING_BUCKET      # Required Landing bucket for IO manager
-    network: ateda_network
-    container_kwargs:
-      auto_remove: true
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-
-# Optional: configure telemetry
-telemetry:
-  enabled: false # Or true
+        env: POSTGRES_DB
+      port:
+        env: POSTGRES_PORT
 
 scheduler:
   module: dagster.core.scheduler
   class: DagsterDaemonScheduler
 
-run_coordinator:
-  module: dagster.core.run_coordinator
-  class: QueuedRunCoordinator
-  config: {}
-    # Optional: Default is no limit, uncomment and adjust if needed
-    # max_concurrent_runs: 10
-    # Optional: Configure tag-based concurrency limits if needed
-    # tag_concurrency_limits:
-    #  - key: "my_key"
-    #    value: "my_value"
-    #    limit: 5
