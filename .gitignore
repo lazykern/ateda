@@ -176,3 +176,8 @@ cython_debug/
 # Dagster instance home
 .dagster_home/
 .tmp_dagster_home*/
+
+# SOPS / Secrets temporary/unencrypted files
+*_unencrypted.yaml
+*.dec
+*.bak
