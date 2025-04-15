@@ -26,6 +26,10 @@ RUN wget --no-verbose ${MAVEN_REPO}/org/apache/hadoop/hadoop-aws/${HADOOP_VERSIO
 
 RUN wget --no-verbose ${MAVEN_REPO}/software/amazon/awssdk/bundle/${AWS_SDK_VERSION}/bundle-${AWS_SDK_VERSION}.jar
 
+RUN wget --no-verbose ${MAVEN_REPO}/software/amazon/awssdk/s3/${AWS_SDK_VERSION}/s3-${AWS_SDK_VERSION}.jar
+
+RUN wget --no-verbose ${MAVEN_REPO}/software/amazon/awssdk/url-connection-client/${AWS_SDK_VERSION}/url-connection-client-${AWS_SDK_VERSION}.jar
+
 RUN wget --no-verbose ${MAVEN_REPO}/org/apache/spark/spark-avro_${SCALA_VERSION}/${SPARK_VERSION}/spark-avro_${SCALA_VERSION}-${SPARK_VERSION}.jar
 
 RUN cp *.jar ${SPARK_JARS_DIR}/ && \
