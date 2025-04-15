@@ -4,22 +4,20 @@ import os
 import subprocess # Needed for calling aria2c
 import tarfile
 import logging
-from dagster import DailyPartitionsDefinition, asset, get_dagster_logger, Output, AssetIn, AssetExecutionContext
-from dagster_aws.s3 import S3Resource
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 import tempfile
 from pathlib import Path
 from datetime import date
 import shutil # For directory cleanup
 
-# Use the UW public alert archive URL
-ZTF_ALERT_ARCHIVE_BASE_URL = "https://ztf.uw.edu/alerts/public"
-# Prefix now just represents structure *within* the bronze bucket
-BRONZE_ZTF_ALERTS_DATE_PREFIX = "ztf_alerts"
-# Keep prefix for MinIO simple, the tarball structure will handle subdirs
-ZTF_RAW_PREFIX = "alerts"
+from dagster import DailyPartitionsDefinition, asset, get_dagster_logger, Output, AssetIn, AssetExecutionContext, Config
+from dagster_aws.s3 import S3Resource
 
-daily_partitions = DailyPartitionsDefinition(start_date="2018-06-01")
+# Import the shared partitions definition
+from ...partitions import daily_partitions
+
+ZTF_ALERT_ARCHIVE_BASE_URL = "https://ztf.uw.edu/alerts/public"
 
 logger = get_dagster_logger()
 
@@ -27,7 +25,8 @@ logger = get_dagster_logger()
     group_name="ingestion",
     description="Downloads a ZTF public alert archive tarball for a specific date using aria2c.",
     io_manager_key="io_manager",
-    partitions_def=daily_partitions
+    partitions_def=daily_partitions,
+    kinds={"shell"}
 )
 def ztf_alert_archive_tarball(context: AssetExecutionContext) -> Path:
     """
@@ -39,7 +38,6 @@ def ztf_alert_archive_tarball(context: AssetExecutionContext) -> Path:
     # Get the date from the partition key
     partition_date_str = context.partition_key
     context.log.info(f"Processing partition: {partition_date_str}")
-    # date_str = partition_date_str # Already in YYYY-MM-DD format from partition key
     # Convert YYYY-MM-DD to YYYYMMDD for the filename
     filename_date_str = partition_date_str.replace("-", "")
 
@@ -115,29 +113,61 @@ def ztf_alert_archive_tarball(context: AssetExecutionContext) -> Path:
     # We rely on the run container being removed.
 
 
+class RawZtfAvroConfig(Config):
+    """Configuration for the raw_ztf_avro_alert_files asset."""
+    s3_prefix: str = "ztf_alerts"
+
+def _upload_to_s3(s3_client, bucket: str, key: str, file_content: bytes, logger) -> tuple[str, bool]:
+    """Helper function to upload a single file to S3.
+    Returns a tuple of (key, success)."""
+    try:
+        file_obj = BytesIO(file_content)
+        logger.info(f"Starting upload: s3://{bucket}/{key}")
+        s3_client.upload_fileobj(
+            file_obj,
+            bucket,
+            key,
+            ExtraArgs={'ContentType': 'avro/binary'}
+        )
+        logger.info(f"Successfully uploaded: s3://{bucket}/{key}")
+        return key, True
+    except Exception as e:
+        logger.error(f"Failed to upload s3://{bucket}/{key}: {e}")
+        return key, False
+
 @asset(
     group_name="ingestion",
-    description="Extracts Avro alert files from a ZTF tarball (read via IO manager) and uploads them to the Bronze bucket.",
+    description="Extracts Avro alert files from a ZTF tarball (read via IO manager) and uploads them to the Bronze bucket using Hive-style partitioning. The S3 prefix is configurable.",
     ins={"alert_tarball": AssetIn(key=ztf_alert_archive_tarball.key)},
     io_manager_key="io_manager",
-    partitions_def=daily_partitions
+    partitions_def=daily_partitions,
+    kinds={"python", "avro", "s3"}
 )
-def raw_ztf_avro_alert_files(context: AssetExecutionContext, alert_tarball: Path, s3: S3Resource) -> list[str]:
+def raw_ztf_avro_alert_files(context: AssetExecutionContext, config: RawZtfAvroConfig, alert_tarball: Path, s3: S3Resource) -> list[str]:
     """
     Extracts Avro files from the alert tarball and uploads them to the Bronze bucket
-    (s3://<S3_BRONZE_BUCKET>/ztf_alerts/YYYYMMDD/alert.avro).
+    using Hive-style partitioning (s3://<S3_BRONZE_BUCKET>/ztf_alerts/year=YYYY/month=MM/day=DD/alert.avro).
+    Now uses parallel uploads for better performance.
     """
-    # Get BRONZE bucket name from environment
     bucket_name = os.getenv("S3_BRONZE_BUCKET")
     if not bucket_name:
         raise ValueError("S3_BRONZE_BUCKET environment variable not set!")
 
-    # Get the date string (YYYYMMDD) from the partition key for the S3 prefix
-    partition_date_str = context.partition_key # Format: YYYY-MM-DD
-    s3_date_prefix = partition_date_str.replace("-", "")
-    context.log.info(f"Using partition date {partition_date_str} -> S3 date prefix {s3_date_prefix}")
+    # Get the date parts from the partition key for the S3 prefix
+    partition_date_str = context.partition_key
+    try:
+        partition_date = date.fromisoformat(partition_date_str)
+        year = partition_date.year
+        month = f"{partition_date.month:02d}"
+        day = f"{partition_date.day:02d}"
+        s3_partition_prefix = f"year={year}/month={month}/day={day}"
+        context.log.info(f"Using partition date {partition_date_str} -> S3 partition prefix {s3_partition_prefix}")
+    except ValueError:
+        context.log.error(f"Invalid date format in partition key: {partition_date_str}")
+        raise
 
     uploaded_keys = []
+    failed_keys = []
     s3_client = s3.get_client()
     temp_file_path = alert_tarball
     logger.info(f"Processing alert tarball from IO Manager path: {temp_file_path}")
@@ -145,31 +175,56 @@ def raw_ztf_avro_alert_files(context: AssetExecutionContext, alert_tarball: Path
 
     try:
         with tarfile.open(temp_file_path, "r:gz") as tar:
-            members = tar.getmembers()
-            logger.info(f"Found {len(members)} members in the tarball.")
-            for member in members:
-                if member.isfile() and member.name.endswith(".avro"):
+            members = [m for m in tar.getmembers() if m.isfile() and m.name.endswith(".avro")]
+            logger.info(f"Found {len(members)} Avro files in the tarball.")
+            
+            # Create a thread pool for parallel uploads
+            # Number of workers: min(32, number of files) to avoid creating too many threads
+            max_workers = min(32, len(members))
+            logger.info(f"Using ThreadPoolExecutor with {max_workers} workers for parallel uploads")
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Dictionary to track futures
+                future_to_key = {}
+                
+                # Submit all upload tasks
+                for member in members:
                     file_obj = tar.extractfile(member)
                     if file_obj:
                         file_content = file_obj.read()
-                        # Construct target key: prefix/YYYYMMDD/alert_filename.avro
-                        target_key = f"{BRONZE_ZTF_ALERTS_DATE_PREFIX}/{s3_date_prefix}/{member.name}"
-
-                        logger.info(f"Uploading {member.name} to s3://{bucket_name}/{target_key}")
-                        try:
-                            s3_client.put_object(
-                                Bucket=bucket_name,
-                                Key=target_key,
-                                Body=file_content,
-                            )
-                            uploaded_keys.append(target_key)
-                        except Exception as e:
-                            logger.error(f"Error uploading {target_key} to S3 Bucket {bucket_name}: {e}")
-                            continue
+                        target_key = f"{config.s3_prefix}/{s3_partition_prefix}/{member.name}"
+                        
+                        # Submit the upload task
+                        future = executor.submit(
+                            _upload_to_s3,
+                            s3_client,
+                            bucket_name,
+                            target_key,
+                            file_content,
+                            logger
+                        )
+                        future_to_key[future] = target_key
                     else:
                         logger.warning(f"Could not extract file content for member: {member.name}")
+                
+                # Process completed uploads as they finish
+                for future in as_completed(future_to_key):
+                    key = future_to_key[future]
+                    try:
+                        _, success = future.result()
+                        if success:
+                            uploaded_keys.append(key)
+                        else:
+                            failed_keys.append(key)
+                    except Exception as e:
+                        logger.error(f"Unexpected error processing upload result for {key}: {e}")
+                        failed_keys.append(key)
 
-        logger.info(f"Finished processing tarball. Uploaded {len(uploaded_keys)} Avro files to Bronze bucket.")
+        # Final status report
+        logger.info(f"Upload complete. Successfully uploaded {len(uploaded_keys)} files.")
+        if failed_keys:
+            logger.warning(f"Failed to upload {len(failed_keys)} files: {', '.join(failed_keys)}")
+        
         return uploaded_keys
 
     except tarfile.TarError as e:

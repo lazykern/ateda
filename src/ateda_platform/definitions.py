@@ -1,15 +1,14 @@
 # src/ateda_platform/definitions.py
 import os
 # import boto3 # No longer needed for Pipes client setup
-from dagster import Definitions, load_assets_from_modules, EnvVar, define_asset_job, AssetSelection, ScheduleDefinition
+from dagster import Definitions, load_assets_from_modules, EnvVar, PipesSubprocessClient
 from dagster_aws.s3 import S3PickleIOManager, S3Resource
 import boto3
 from dagster_aws.pipes import PipesS3ContextInjector, PipesS3MessageReader
 # Import asset modules from their new locations
-from .assets.ingestion import hello_world_asset
 from .assets.ingestion import ingestion_assets
 # Import the new processing assets module
-from .assets.processing import spark_processing_assets
+from .assets.processing import silver_fact_detection_asset
 
 
 from .resources.nessie import NessieResource
@@ -52,36 +51,10 @@ s3_pickle_io_manager = S3PickleIOManager(
 # --- Load Assets --- 
 
 all_assets = load_assets_from_modules([
-    hello_world_asset,
     ingestion_assets,
-    spark_processing_assets # Add the new module
+    silver_fact_detection_asset
 ])
 
-# --- Define Jobs (Optional but useful for Presets/Schedules) ---
-
-# A job that targets only the hello_iceberg_table asset
-hello_iceberg_job = define_asset_job(
-    name="hello_iceberg_job",
-    selection=AssetSelection.keys("hello_iceberg_table")
-)
-
-# --- Define Schedules (For automated runs) ---
-
-# Example: Run the hello_iceberg_job daily with specific config
-daily_hello_iceberg_schedule = ScheduleDefinition(
-    job=hello_iceberg_job,
-    cron_schedule="0 0 * * *",  # Run daily at midnight UTC
-    run_config={
-        "ops": {
-            "hello_iceberg_table": {
-                "config": {
-                    "table": "scheduled_hello_table",
-                    "database": "scheduled_db"
-                }
-            }
-        }
-    }
-)
 
 # --- Define Definitions --- 
 
@@ -92,12 +65,11 @@ defs = Definitions(
         "io_manager": s3_pickle_io_manager,
         "pipes_s3_context_injector": pipes_s3_context_injector,
         "pipes_s3_message_reader": pipes_s3_message_reader,
+        "pipes_subprocess_client": PipesSubprocessClient(),
         "nessie": NessieResource(
             uri=EnvVar("NESSIE_URI"),
         )
     },
-    jobs=[hello_iceberg_job], # Include the job
-    schedules=[daily_hello_iceberg_schedule], # Add the schedule
     # Add asset checks defined in the assets
     # Note: AssetCheckSpecs defined directly on assets are automatically collected,
     # so explicitly listing them here is not strictly necessary unless defining them separately.
