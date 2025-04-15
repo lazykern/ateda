@@ -1,3 +1,4 @@
+# src/ateda_platform/assets/processing/hello_iceberg_asset.py
 import os
 import subprocess
 from dagster import MaterializeResult, TableColumn, TableSchema, asset, file_relative_path, get_dagster_logger, AssetExecutionContext, open_pipes_session, Config, MetadataValue
@@ -16,8 +17,6 @@ class HelloIcebergConfig(Config):
     """Configuration for the hello_iceberg_table asset."""
     table: str  # Table name is now required
     database: str  # Database name is now required
-
-# Removed silver_ztf_alerts asset definition
 
 # --- Hello Iceberg Asset (Refactored for local[*] Spark via Subprocess) ---
 
@@ -87,6 +86,7 @@ def hello_iceberg_table(
     spark_packages_str = ",".join(packages)
 
     # --- Path to PySpark Script ---
+    # Assuming the script is in ../../spark/hello_iceberg.py relative to this asset file
     script_path = os.path.join(file_relative_path(__file__, "../../spark/hello_iceberg.py"))
     script_path = os.path.abspath(script_path)
     context.log.info(f"Using PySpark script at: {script_path}")
@@ -156,6 +156,19 @@ def hello_iceberg_table(
         command.extend(bootstrap_args)
 
         # Run the spark-submit command
-        subprocess.run(command, env=subprocess_env, check=True)
+        try:
+            subprocess.run(command, env=subprocess_env, check=True, text=True, capture_output=True)
+            # Log stdout/stderr if needed for debugging, Pipes should capture primary output
+            # context.log.info(f"Spark submit stdout:\n{result.stdout}")
+            # if result.stderr:
+            #     context.log.warning(f"Spark submit stderr:\n{result.stderr}")
+        except subprocess.CalledProcessError as e:
+            context.log.error(f"spark-submit failed with return code {e.returncode}")
+            context.log.error(f"stdout: {e.stdout}")
+            context.log.error(f"stderr: {e.stderr}")
+            raise
+        except Exception as e:
+            context.log.error(f"An unexpected error occurred running spark-submit: {e}")
+            raise
 
-        return session.get_results()
+        return session.get_results() 
