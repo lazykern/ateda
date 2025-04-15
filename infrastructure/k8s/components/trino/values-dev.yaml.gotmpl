@@ -1,0 +1,43 @@
+# values-dev.yaml.gotmpl for Trino (Dev Environment)
+
+# Basic configuration - adjust resources/replicas as needed for dev
+image:
+  tag: 474
+
+server:
+  config:
+    workers: 2
+
+# Configure Trino catalogs using the 'catalogs' section
+catalogs:
+  ateda-silver: |
+    connector.name=iceberg
+    iceberg.catalog.type=rest
+    iceberg.rest-catalog.uri=http://ateda-lakekeeper-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:8181/catalog
+    iceberg.rest-catalog.warehouse=ateda-silver
+
+# Configure Coordinator Service for NodePort access
+service:
+  type: NodePort
+  port: 8080
+  nodePort: 30080
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+worker:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 4Gi
+
+serviceMonitor:
+  enabled: false 

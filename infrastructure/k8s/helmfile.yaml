@@ -1,0 +1,74 @@
+# infrastructure/k8s/helmfile.yaml
+
+# Define Helm repositories
+repositories:
+  - name: lakekeeper
+    url: https://lakekeeper.github.io/lakekeeper-charts/
+  - name: bitnami        
+    url: https://charts.bitnami.com/bitnami
+  - name: minio
+    url: https://charts.min.io/
+  - name: trino          
+    url: https://trinodb.github.io/charts/
+  - name: spark-operator
+    url: https://kubeflow.github.io/spark-operator
+
+---
+
+environments:
+  default:
+    values:
+      - environment: dev
+      - namespace: "ateda-dev"
+      - ./environments/dev/secrets.yaml
+
+  prod: {}
+
+---
+
+# Define Helm releases
+releases:
+  # --- PostgreSQL ---
+  - name: "ateda-postgres-{{ .Values.environment }}"
+    namespace: "{{ .Values.namespace }}"
+    chart: bitnami/postgresql
+    version: "16.6.3"
+    values:
+      - "./components/postgres/values-{{ .Values.environment }}.yaml.gotmpl"
+
+  # --- Minio ---
+  - name: "ateda-minio-{{ .Values.environment }}"
+    namespace: "{{ .Values.namespace }}"
+    chart: minio/minio
+    version: "5.4.0"
+    values:
+      - "./components/minio/values-{{ .Values.environment }}.yaml.gotmpl"
+
+  # --- Lakekeeper ---
+  - name: "ateda-lakekeeper-{{ .Values.environment }}"
+    namespace: "{{ .Values.namespace }}"
+    chart: lakekeeper/lakekeeper
+    version: "0.5.0"
+    values:
+      - "./components/lakekeeper/values-{{ .Values.environment }}.yaml.gotmpl"
+
+  # --- Trino ---
+  - name: "ateda-trino-{{ .Values.environment }}"
+    namespace: "{{ .Values.namespace }}"
+    chart: trino/trino
+    version: "1.38.0"
+    values:
+      - "./components/trino/values-{{ .Values.environment }}.yaml.gotmpl"
+
+  # --- Spark Operator ---
+  - name: "spark-operator"
+    # Recommended namespace from the operator docs
+    namespace: "spark-operator"
+    chart: spark-operator/spark-operator
+    # Find the latest compatible chart version if desired, otherwise Helmfile might pick latest
+    version: "2.1.1"
+    createNamespace: true
+    # No specific values needed typically for a basic install,
+    # but you can create a values file if customization is required later.
+    values:
+     - "./components/spark-operator/values-{{ .Values.environment }}.yaml.gotmpl" 

@@ -1,0 +1,70 @@
+# infrastructure/k8s/components/minio/values-dev.yaml
+# Values for the standalone Minio chart (minio/minio) in Dev environment
+
+# Specify image tag if deviating from chart default
+image:
+  tag: latest
+
+mode: standalone
+replicas: 1
+
+# Reference the Kubernetes secret containing rootUser and rootPassword
+# Helmfile will create this secret from secrets-dev.yaml
+users:
+  - accessKey: {{ .Values.minio.rootUser }}
+    secretKey: {{ .Values.minio.rootPassword }}
+    policy: readwrite # Assign the built-in readwrite policy
+
+# Persistence configuration
+persistence:
+  enabled: true
+  size: 10Gi
+  # accessMode: ReadWriteOnce # Default is usually fine
+  # storageClass: "-" # Use default storage class in Kind
+
+
+# Define buckets to be created by the post-install hook job
+# NOTE: Helmfile needs access to these environment variables during execution,
+# or you must replace e.g., "${S3_LANDING_BUCKET}" with the actual static name.
+buckets:
+  - name: "ateda-landing"
+    policy: none
+    purge: false
+    # versioning: false # Optional
+  - name: "ateda-bronze"
+    policy: none
+    purge: false
+  - name: "ateda-silver"
+    policy: none
+    purge: false
+  - name: "ateda-gold"
+    policy: none
+    purge: false
+  - name: "dagster-pipes"
+    policy: none
+    purge: false
+
+# Expose services via NodePort for Kind/dev access
+service:
+  type: NodePort
+  port: 9000 # S3 API port
+  nodePort: 30000 # Fixed NodePort for kind extraPortMappings
+
+consoleService:
+  type: NodePort
+  port: 9001 # Console port (Check chart default - might differ)
+  nodePort: 30001 # Fixed NodePort for kind extraPortMappings
+
+# Resource requests/limits for the Minio pod
+resources:
+  requests:
+    memory: 512Mi
+    cpu: "250m"
+  limits:
+    memory: 1Gi
+    cpu: "500m"
+
+# Disable Prometheus ServiceMonitor if not needed
+metrics:
+  serviceMonitor:
+    enabled: false 

@@ -1,0 +1,32 @@
+catalog:
+  image:
+    repository: quay.io/lakekeeper/catalog
+    tag: v0.8.0
+    pullPolicy: IfNotPresent 
+  service:
+    type: NodePort
+    port: 8181
+    nodePort:
+      http: 30081
+
+resources: {}
+  # ---- EXAMPLE ----
+  # resources:
+  #   limits:
+  #     cpu: 100m
+  #     memory: 128Mi
+  #   requests:
+  #     cpu: 100m
+  #     memory: 128Mi
+
+postgresql:
+  enabled: false
+
+externalDatabase:
+  type: postgres
+  host_read: "ateda-postgres-{{ .Values.environment }}-postgresql.{{ .Values.namespace }}.svc.cluster.local"
+  host_write: "ateda-postgres-{{ .Values.environment }}-postgresql.{{ .Values.namespace }}.svc.cluster.local"
+  port: 5432
+  database: postgres_db
+  user: {{ .Values.postgres.username }}
+  password: {{ .Values.postgres.password }}

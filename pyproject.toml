@@ -16,6 +16,7 @@ dependencies = [
     "dagster-docker>=0.26.10",
     "dagster-pipes>=0.24.0",
     "pyspark>=3.5.5",
+    "trino>=0.333.0",
 ]
 license = { text = "MIT" }
 

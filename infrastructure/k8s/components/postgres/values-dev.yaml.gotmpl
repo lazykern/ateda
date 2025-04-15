@@ -1,0 +1,38 @@
+# values-dev.yaml for Bitnami PostgreSQL (Dev Environment)
+
+# Use standalone architecture for development (no replication)
+architecture: standalone
+
+# Match the major version from docker-compose.yml
+image:
+  tag: 17.4.0
+
+auth:
+  # Username and Database from .env file defaults
+  username: {{ .Values.postgres.username }}
+  password: {{ .Values.postgres.password }}
+  database: "postgres_db"
+
+# Persistence configuration for development
+primary:
+  persistence:
+    enabled: true
+    size: 5Gi # Smaller size for development
+    # Use default storage class provided by Kind
+
+  # Add service configuration for NodePort access
+  service:
+    type: NodePort
+    # port: 5432 # Keep chart default internal port
+    # Correct structure for NodePort based on Bitnami chart
+    nodePorts:
+      postgresql: 30432 # Fixed NodePort for kind extraPortMappings
+
+  # Add resource requests/limits for dev environment
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi 

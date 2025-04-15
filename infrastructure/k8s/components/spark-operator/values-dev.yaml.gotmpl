@@ -1,0 +1,8 @@
+image:
+  registry: "docker.io"
+  repository: "kubeflow/spark-operator"
+  tag: "2.1.1"
+
+spark:
+  jobNamespaces:
+    - "{{ .Values.namespace }}" 
