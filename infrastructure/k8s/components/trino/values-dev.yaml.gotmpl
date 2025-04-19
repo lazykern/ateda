@@ -10,11 +10,19 @@ server:
 
 # Configure Trino catalogs using the 'catalogs' section
 catalogs:
-  ateda-silver: |
+  ateda_silver: |
     connector.name=iceberg
     iceberg.catalog.type=rest
-    iceberg.rest-catalog.uri=http://ateda-lakekeeper-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:8181/catalog
-    iceberg.rest-catalog.warehouse=ateda-silver
+    iceberg.rest-catalog.uri=http://ateda-nessie-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:19120/iceberg
+    iceberg.rest-catalog.warehouse=ateda_silver
+    iceberg.file-format=PARQUET
+    iceberg.compression-codec=ZSTD
+    fs.native-s3.enabled=true
+    s3.endpoint=http://ateda-minio-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:9000
+    s3.region=us-east-1
+    s3.path-style-access=true
+    s3.aws-access-key=minioadmin
+    s3.aws-secret-key=minioadmin
 
 # Configure Coordinator Service for NodePort access
 service:
@@ -33,11 +41,11 @@ resources:
 worker:
   resources:
     requests:
-      cpu: 200m
-      memory: 512Mi
+      cpu: 500m
+      memory: 1Gi
     limits:
       cpu: 1000m
-      memory: 4Gi
+      memory: 2Gi
 
 serviceMonitor:
   enabled: false 

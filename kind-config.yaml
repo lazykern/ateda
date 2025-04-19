@@ -23,13 +23,10 @@ nodes:
     hostPort: 8080
     protocol: TCP
   # Map host port 8181 to NodePort 30081 (for Lakekeeper Service)
-  - containerPort: 30081
-    hostPort: 8181
-    protocol: TCP
   # Optional: Map host port 5432 to NodePort 30432 (for PostgreSQL Service)
   - containerPort: 30432
     hostPort: 5432
     protocol: TCP
-  # - containerPort: 30432
-  #   hostPort: 5432
-  #   protocol: TCP 
+  - containerPort: 30120
+    hostPort: 19120
+    protocol: TCP

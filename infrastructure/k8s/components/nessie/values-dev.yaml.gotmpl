@@ -1,0 +1,106 @@
+# infrastructure/k8s/components/nessie/values-dev.yaml.gotmpl
+# Values for the nessie/nessie chart in Dev environment
+
+# Basic configuration
+replicaCount: 1
+
+
+# Use PostgreSQL as the backend via JDBC2
+versionStoreType: JDBC2
+
+service:
+  type: NodePort
+
+jdbc:
+  jdbcUrl: "jdbc:postgresql://ateda-postgres-{{ .Values.environment }}-postgresql.{{ .Values.namespace }}.svc.cluster.local:5432/postgres_db?currentSchema=nessie"
+  secret:
+    name: "nessie-jdbc-creds-{{ .Values.environment }}"
+    username: "username"
+    password: "password"
+
+# Resource requests/limits for dev environment
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+catalog:
+  enabled: true
+  iceberg:
+    defaultWarehouse: "ateda_silver"
+    warehouses:
+    - name: ateda_silver
+      location: s3://ateda-silver/
+      configDefaults: {}
+      configOverrides: {}
+  storage:
+    s3:
+      defaultOptions:
+        region: us-east-1
+        endpoint: "http://ateda-minio-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:9000"
+        externalEndpoint: "http://localhost:9000"
+        # endpoint used for the Nessie server.
+        # externalEndpoint: ~
+        # -- Whether to use path-style access. Optional; if not provided, the default is used. If
+        # true, path-style access will be used, as in: https://<domain>/<bucket>. If false, a
+        # virtual-hosted style will be used instead, as in: https://<bucket>.<domain>.
+        pathStyleAccess: true
+        # -- AWS Access point for this bucket. Access points can be used to perform S3 operations by
+        # specifying a mapping of bucket to access points. This is useful for multi-region access,
+        # cross-region access, disaster recovery, etc. See
+        # https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html.
+        accessPoint: ~
+        # -- Authorize cross-region calls when contacting an access point. The default is false.
+        allowCrossRegionAccessPoint: ~
+        # -- Controls the authentication mode for the Catalog server. Valid values are:
+        # - APPLICATION_GLOBAL: Use the default AWS credentials provider chain.
+        # - STATIC: Static credentials provided through the accessKeySecret option.
+        # The default is STATIC.
+        authType: STATIC
+        # --Optional parameter to disable S3 request signing. Default is to enable S3 request signing.
+        requestSigningEnabled: ~  # true
+        # -- The STS endpoint. Optional; if not provided, the default is used. This parameter must
+        # be set if the cloud provider is not AMAZON and the catalog is configured to use S3
+        # sessions (e.g. to use the "assume role" functionality).
+        stsEndpoint: ~  # "https://sts.amazonaws.com"
+        # -- AWS credentials. Required when serverAuthenticationMode is STATIC.
+        accessKeySecret:
+          # -- The secret name to pull AWS credentials from.
+          name: "nessie-minio-creds-{{ .Values.environment }}"
+          # -- The secret key storing the AWS secret key id.
+          awsAccessKeyId: "awsAccessKeyId"
+          # -- The secret key storing the AWS secret access key.
+          awsSecretAccessKey: "awsSecretAccessKey"
+
+# Disable autoscaling for dev
+autoscaling:
+  enabled: false
+
+# Disable ingress by default for dev unless specifically needed
+ingress:
+  enabled: false
+
+# Optional: Configure logging if needed (defaults might be fine for dev)
+# log:
+#   level: INFO
+#   console:
+#     enabled: true
+#     threshold: ALL
+#     json: false
+
+# Add probe configuration to potentially override chart defaults
+# Give the app more time to start before probing
+livenessProbe:
+  initialDelaySeconds: 30 # Increased from default (likely 5 or 10)
+  periodSeconds: 15       # Check less frequently
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  initialDelaySeconds: 30 # Increased from default
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3

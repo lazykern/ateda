@@ -1,9 +1,20 @@
 # infrastructure/k8s/helmfile.yaml
 
+# Global hooks
+hooks:
+  # Ensure the target namespace exists before presync hooks run
+  - events: ["prepare"]
+    showlogs: true
+    command: "sh"
+    args:
+      - "-c"
+      - |
+        kubectl create namespace ateda-{{ .Environment.Name }} --dry-run=client -o yaml | kubectl apply -f -
+
 # Define Helm repositories
 repositories:
-  - name: lakekeeper
-    url: https://lakekeeper.github.io/lakekeeper-charts/
+  - name: nessie
+    url: https://charts.projectnessie.org
   - name: bitnami        
     url: https://charts.bitnami.com/bitnami
   - name: minio
@@ -16,7 +27,7 @@ repositories:
 ---
 
 environments:
-  default:
+  dev:
     values:
       - environment: dev
       - namespace: "ateda-dev"
@@ -35,8 +46,61 @@ releases:
     version: "16.6.3"
     values:
       - "./components/postgres/values-{{ .Values.environment }}.yaml.gotmpl"
+  
+  # --- Nessie ---
+  - name: "ateda-nessie-{{ .Values.environment }}"
+    namespace: "{{ .Values.namespace }}"
+    chart: nessie/nessie
+    version: "0.103.2"
+    values:
+      - "./components/nessie/values-{{ .Values.environment }}.yaml.gotmpl"
+    needs:
+      - "ateda-postgres-{{ .Values.environment }}"
+    hooks:
+      - events: ["presync"]
+        showlogs: true
+        command: "sh"
+        args:
+          - "-c"
+          - |
+            kubectl create secret generic nessie-jdbc-creds-{{ .Values.environment }} --namespace={{ .Values.namespace }} --from-literal=username={{ .Values.postgres.username }} --from-literal=password={{ .Values.postgres.password }} --dry-run=client -o yaml | kubectl apply -f -
+      - events: ["postuninstall"]
+        showlogs: true
+        command: kubectl
+        args:
+          - delete
+          - secret
+          - nessie-jdbc-creds-{{ .Values.environment }}
+          - --namespace={{ .Values.namespace }}
+          - --ignore-not-found=true
+      - events: ["presync"]
+        showlogs: true
+        command: "sh"
+        args:
+          - "-c"
+          - |
+            kubectl create secret generic nessie-minio-creds-{{ .Values.environment }} --namespace={{ .Values.namespace }} --from-literal=awsAccessKeyId={{ .Values.minio.rootUser }} --from-literal=awsSecretAccessKey={{ .Values.minio.rootPassword }} --dry-run=client -o yaml | kubectl apply -f -
+      - events: ["postuninstall"]
+        showlogs: true
+        command: kubectl
+        args:
+          - delete
+          - secret
+          - nessie-minio-creds-{{ .Values.environment }}
+          - --namespace={{ .Values.namespace }}
+          - --ignore-not-found=true
+      - events: ["postsync"]
+        showlogs: true
+        command: "kubectl"
+        args:
+        - "patch"
+        - "service"
+        - "ateda-nessie-{{ .Values.environment }}"
+        - "--namespace"
+        - "{{ .Values.namespace }}"
+        - "--type=json"
+        - "-p=[{\"op\": \"replace\", \"path\": \"/spec/ports/0/nodePort\", \"value\": 30120}]"
 
-  # --- Minio ---
   - name: "ateda-minio-{{ .Values.environment }}"
     namespace: "{{ .Values.namespace }}"
     chart: minio/minio
@@ -44,31 +108,9 @@ releases:
     values:
       - "./components/minio/values-{{ .Values.environment }}.yaml.gotmpl"
 
-  # --- Lakekeeper ---
-  - name: "ateda-lakekeeper-{{ .Values.environment }}"
-    namespace: "{{ .Values.namespace }}"
-    chart: lakekeeper/lakekeeper
-    version: "0.5.0"
-    values:
-      - "./components/lakekeeper/values-{{ .Values.environment }}.yaml.gotmpl"
-
-  # --- Trino ---
   - name: "ateda-trino-{{ .Values.environment }}"
     namespace: "{{ .Values.namespace }}"
     chart: trino/trino
     version: "1.38.0"
     values:
       - "./components/trino/values-{{ .Values.environment }}.yaml.gotmpl"
-
-  # --- Spark Operator ---
-  - name: "spark-operator"
-    # Recommended namespace from the operator docs
-    namespace: "spark-operator"
-    chart: spark-operator/spark-operator
-    # Find the latest compatible chart version if desired, otherwise Helmfile might pick latest
-    version: "2.1.1"
-    createNamespace: true
-    # No specific values needed typically for a basic install,
-    # but you can create a values file if customization is required later.
-    values:
-     - "./components/spark-operator/values-{{ .Values.environment }}.yaml.gotmpl" 

@@ -18,7 +18,12 @@ primary:
   persistence:
     enabled: true
     size: 5Gi # Smaller size for development
-    # Use default storage class provided by Kind
+
+  # Initialization scripts
+  initdb:
+    scripts:
+      create_nessie_schema.sql: |
+        CREATE SCHEMA IF NOT EXISTS nessie;
 
   # Add service configuration for NodePort access
   service:

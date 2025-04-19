@@ -17,6 +17,20 @@ dependencies = [
     "dagster-pipes>=0.24.0",
     "pyspark>=3.5.5",
     "trino>=0.333.0",
+    "kubernetes>=32.0.1",
+    "pyyaml>=6.0.2",
+    "polars[pyarrow]>=1.27.1",
+    "fastavro>=1.10.0",
+    "pyiceberg>=0.9.0",
+    "pyarrow>=19.0.1",
+    "astropy>=7.0.1",
+    "astroquery>=0.4.10",
+    "dbt-core>=1.9.4",
+    "dbt-spark[session]>=1.9.2",
+    "dbt-trino>=1.9.1",
+    "duckdb>=0.10.5",
+    "boto3-stubs[essential]>=1.37.37",
+    "ipywidgets>=8.1.6",
 ]
 license = { text = "MIT" }
 
@@ -25,7 +39,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+    "ipykernel>=6.29.5",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ateda_platform"]
