@@ -1,0 +1,45 @@
+# infrastructure/k8s/components/spark-operator/values-dev.yaml.gotmpl
+# Values for the spark-operator chart in Dev environment
+
+image:
+  registry: docker.io
+  repository: kubeflow/spark-operator
+  tag: "2.1.1"
+  pullPolicy: IfNotPresent
+
+# Tell the operator to watch for SparkApplications in our target namespace
+spark:
+  jobNamespaces:
+    - "{{ .Values.namespace }}"
+  # Ensure RBAC is created for Spark jobs within the target namespace
+  serviceAccount:
+    create: true
+  rbac:
+    create: true
+
+# Define resource limits for the operator's controller pod
+controller:
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: "100m"
+    limits:
+      memory: 512Mi
+      cpu: "500m"
+
+# Define resource limits for the operator's webhook pod
+webhook:
+  # Keep webhook enabled for potential pod customization
+  enable: false
+  resources:
+    requests:
+      memory: 200Mi
+    limits:
+      memory: 400Mi
+      cpu: "300m"
+
+# Disable Prometheus PodMonitor creation as it's likely not needed for dev
+# and matches configuration for other components.
+prometheus:
+  podMonitor:
+    create: false
