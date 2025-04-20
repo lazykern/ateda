@@ -41,7 +41,6 @@ catalog:
       defaultOptions:
         region: us-east-1
         endpoint: "http://ateda-minio-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:9000"
-        externalEndpoint: "http://localhost:9000"
         # endpoint used for the Nessie server.
         # externalEndpoint: ~
         # -- Whether to use path-style access. Optional; if not provided, the default is used. If

@@ -1,58 +1,67 @@
-# src/ateda_platform/definitions.py
 import os
-# import boto3 # No longer needed for Pipes client setup
-from dagster import Definitions, load_assets_from_modules, EnvVar, PipesSubprocessClient
-from dagster_aws.s3 import S3PickleIOManager, S3Resource
+from dagster import Definitions, load_assets_from_modules, EnvVar, ConfigurableResource
+from dagster_aws.s3 import S3Resource
 import boto3
-from dagster_aws.pipes import PipesS3ContextInjector, PipesS3MessageReader
-# Import asset modules from their new locations
-from .assets.ingestion import ingestion_assets
-# Import the new processing assets module
-from .assets.processing import silver_fact_detection_asset
+from .resources import AWSConfig, S3Config, RestCatalogConfig, PipesConfig
 
-
-from .resources.nessie import NessieResource
+# Load assets
+from .assets.ingestion import assets as ingestion_assets
+from .assets.transformation import assets as transformation_assets 
 
 # --- Define Resources --- 
 
-s3_client = boto3.client(
-    "s3",
-    endpoint_url=os.getenv("S3_ENDPOINT_URL"),
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+# Instantiate configuration resources using EnvVar
+aws_config = AWSConfig(
+    access_key_id=EnvVar("AWS_ACCESS_KEY_ID"),
+    secret_access_key=EnvVar("AWS_SECRET_ACCESS_KEY"),
 )
+s3_config = S3Config(
+    endpoint_scheme=EnvVar("S3_ENDPOINT_SCHEME"),
+    endpoint_host=EnvVar("S3_ENDPOINT_HOST"),
+    endpoint_port=EnvVar("S3_ENDPOINT_PORT"),
+    internal_endpoint_scheme=EnvVar("INTERNAL_S3_ENDPOINT_SCHEME"),
+    internal_endpoint_host=EnvVar("INTERNAL_S3_ENDPOINT_HOST"),
+    internal_endpoint_port=EnvVar("INTERNAL_S3_ENDPOINT_PORT"),
+    landing_bucket=EnvVar("S3_LANDING_BUCKET"),
+    bronze_bucket=EnvVar("S3_BRONZE_BUCKET"),
+    silver_bucket=EnvVar("S3_SILVER_BUCKET"),
+    gold_bucket=EnvVar("S3_GOLD_BUCKET"),
+    code_bucket=EnvVar("S3_CODE_BUCKET"),
+)
+rest_catalog_config = RestCatalogConfig(
+    uri=EnvVar("REST_CATALOG_URI"),
+    internal_uri=EnvVar("INTERNAL_REST_CATALOG_URI"),
+    silver_warehouse_name=EnvVar("SILVER_WAREHOUSE_NAME"),
+    silver_database_name=EnvVar("SILVER_DATABASE_NAME"),
+)
+pipes_config = PipesConfig(bucket=EnvVar("DAGSTER_PIPES_BUCKET"))
 
-# Explicitly configure the S3 resource using EnvVar
+# Resolve endpoint URL and credentials at definition time for S3Resource
+resolved_endpoint_url = f"{EnvVar('S3_ENDPOINT_SCHEME').get_value()}://{EnvVar('S3_ENDPOINT_HOST').get_value()}:{EnvVar('S3_ENDPOINT_PORT').get_value()}"
+resolved_access_key_id = EnvVar("AWS_ACCESS_KEY_ID").get_value()
+resolved_secret_access_key = EnvVar("AWS_SECRET_ACCESS_KEY").get_value()
+resolved_pipes_bucket = EnvVar("DAGSTER_PIPES_BUCKET").get_value()
+
+# Define operational resources using the resolved values
 s3_resource = S3Resource(
-    endpoint_url=EnvVar("S3_ENDPOINT_URL"),
-    aws_access_key_id=EnvVar("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=EnvVar("AWS_SECRET_ACCESS_KEY"),
+    endpoint_url=resolved_endpoint_url,
+    aws_access_key_id=resolved_access_key_id,
+    aws_secret_access_key=resolved_secret_access_key,
 )
 
-# Define S3 Pipes components as resources
-pipes_s3_context_injector = PipesS3ContextInjector(
-    client=s3_client,
-    bucket=os.getenv("DAGSTER_PIPES_BUCKET"),
-)
-
-pipes_s3_message_reader = PipesS3MessageReader(
-    client=s3_client,
-    bucket=os.getenv("DAGSTER_PIPES_BUCKET"),
-    include_stdio_in_messages=True,
-)
-
-# --- Define IO Manager --- 
-
-s3_pickle_io_manager = S3PickleIOManager(
-    s3_resource=s3_resource,
-    s3_bucket=EnvVar("S3_LANDING_BUCKET"),
+# Configure Pipes Resources with resolved values
+pipes_boto3_s3_client = boto3.client(
+    "s3",
+    endpoint_url=resolved_endpoint_url,
+    aws_access_key_id=resolved_access_key_id,
+    aws_secret_access_key=resolved_secret_access_key,
 )
 
 # --- Load Assets --- 
 
 all_assets = load_assets_from_modules([
     ingestion_assets,
-    silver_fact_detection_asset
+    transformation_assets,
 ])
 
 
@@ -62,18 +71,10 @@ defs = Definitions(
     assets=all_assets,
     resources={
         "s3": s3_resource,
-        "io_manager": s3_pickle_io_manager,
-        "pipes_s3_context_injector": pipes_s3_context_injector,
-        "pipes_s3_message_reader": pipes_s3_message_reader,
-        "pipes_subprocess_client": PipesSubprocessClient(),
-        "nessie": NessieResource(
-            uri=EnvVar("NESSIE_URI"),
-        )
+        # Config resources
+        "aws_config": aws_config,
+        "s3_config": s3_config,
+        "rest_catalog_config": rest_catalog_config,
+        "pipes_config": pipes_config,
     },
-    # Add asset checks defined in the assets
-    # Note: AssetCheckSpecs defined directly on assets are automatically collected,
-    # so explicitly listing them here is not strictly necessary unless defining them separately.
-    # asset_checks=[spark_processing_assets.silver_ztf_alerts_non_empty_check]
 )
-
-# Removed commented out old repository definition
