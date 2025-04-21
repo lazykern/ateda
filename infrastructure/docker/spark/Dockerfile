@@ -40,5 +40,7 @@ RUN wget --no-verbose ${MAVEN_REPO}/software/amazon/awssdk/url-connection-client
 
 RUN wget --no-verbose ${MAVEN_REPO}/org/apache/spark/spark-avro_${SCALA_VERSION}/${SPARK_VERSION}/spark-avro_${SCALA_VERSION}-${SPARK_VERSION}.jar
 
+RUN wget --no-verbose ${MAVEN_REPO}/org/apache/spark/spark-hadoop-cloud_${SCALA_VERSION}/${SPARK_VERSION}/spark-hadoop-cloud_${SCALA_VERSION}-${SPARK_VERSION}.jar
+
 RUN cp *.jar ${SPARK_JARS_DIR}/ && \
     cd / && rm -rf /tmp/jars
