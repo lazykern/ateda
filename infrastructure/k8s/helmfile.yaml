@@ -19,8 +19,8 @@ repositories:
     url: https://charts.bitnami.com/bitnami
   - name: minio
     url: https://charts.min.io/
-  - name: trino          
-    url: https://trinodb.github.io/charts/
+  - name: starrocks
+    url: https://starrocks.github.io/starrocks-kubernetes-operator
   - name: spark-operator
     url: https://kubeflow.github.io/spark-operator
 
@@ -108,12 +108,20 @@ releases:
     values:
       - "./components/minio/values-{{ .Values.environment }}.yaml.gotmpl"
 
-  - name: "ateda-trino-{{ .Values.environment }}"
+  # --- StarRocks ---
+  - name: "ateda-starrocks-{{ .Values.environment }}"
     namespace: "{{ .Values.namespace }}"
-    chart: trino/trino
-    version: "1.38.0"
+    chart: starrocks/kube-starrocks
+    version: "1.10.1"
     values:
-      - "./components/trino/values-{{ .Values.environment }}.yaml.gotmpl"
+      # This file needs to be created and configured
+      - "./components/starrocks/values-{{ .Values.environment }}.yaml.gotmpl" 
+    # Add dependencies 
+    disableValidationOnInstall: true
+    needs:
+      - "ateda-minio-{{ .Values.environment }}"
+      # Depends on Nessie mainly for the minio credential secret hook
+      - "ateda-nessie-{{ .Values.environment }}" 
 
   # --- Spark Operator ---
   - name: "spark-operator"

@@ -18,15 +18,23 @@ nodes:
   - containerPort: 30001
     hostPort: 9001
     protocol: TCP
-  # Map host port 8080 to NodePort 30080 (for Trino Coordinator Service)
+  # Map host port 8080 to NodePort 30080 (for StarRocks Coordinator Service)
   - containerPort: 30080
     hostPort: 8080
     protocol: TCP
-  # Map host port 8181 to NodePort 30081 (for Lakekeeper Service)
+  # Map host port 8040 to NodePort 30040 (for StarRocks Broker Service)
+  - containerPort: 30040
+    hostPort: 8040
+    protocol: TCP
+  # Map host port 8030 to NodePort 30030 (for StarRocks FE Service)
+  - containerPort: 30030
+    hostPort: 8030
+    protocol: TCP
   # Optional: Map host port 5432 to NodePort 30432 (for PostgreSQL Service)
   - containerPort: 30432
     hostPort: 5432
     protocol: TCP
+  # Map host port 19120 to NodePort 30120 (for Nessie Service)
   - containerPort: 30120
     hostPort: 19120
     protocol: TCP
