@@ -6,6 +6,7 @@ from .resources import (
     S3Config,
     RestCatalogConfig,
     PipesConfig,
+    SparkOperatorResource,
 )
 
 # Load assets
@@ -82,5 +83,6 @@ defs = Definitions(
         "s3_config": s3_config,
         "rest_catalog_config": rest_catalog_config,
         "pipes_config": pipes_config,
+        "spark_operator": SparkOperatorResource(),
     },
 )

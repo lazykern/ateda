@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field as PydanticField
 # Define the SparkApplication group and version here as they are used in defaults
 SPARK_OP_GROUP = "sparkoperator.k8s.io"
 SPARK_OP_VERSION = "v1beta2"
+SPARK_OP_PLURAL = "sparkapplications"
 
 # --- Pydantic Models for SparkApplication CRD ---
 # NOTE: Using PydanticField for Pydantic's Field to avoid conflict with Dagster's Field
