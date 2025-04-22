@@ -15,7 +15,6 @@ class S3Config(ConfigurableResource):
     internal_endpoint_host: str
     internal_endpoint_port: str
     # Buckets
-    landing_bucket: str
     bronze_bucket: str
     silver_bucket: str
     gold_bucket: str

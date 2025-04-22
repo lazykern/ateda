@@ -1,14 +1,18 @@
-import os
-from dagster import Definitions, load_assets_from_modules, EnvVar, ConfigurableResource
+from dagster import Definitions, load_assets_from_modules, EnvVar
 from dagster_aws.s3 import S3Resource
 import boto3
-from .resources import AWSConfig, S3Config, RestCatalogConfig, PipesConfig
+from .resources import (
+    AWSConfig,
+    S3Config,
+    RestCatalogConfig,
+    PipesConfig,
+)
 
 # Load assets
 from .assets.ingestion import assets as ingestion_assets
-from .assets.transformation import assets as transformation_assets 
+from .assets.transformation import combine, detection
 
-# --- Define Resources --- 
+# --- Define Resources ---
 
 # Instantiate configuration resources using EnvVar
 aws_config = AWSConfig(
@@ -22,7 +26,6 @@ s3_config = S3Config(
     internal_endpoint_scheme=EnvVar("INTERNAL_S3_ENDPOINT_SCHEME"),
     internal_endpoint_host=EnvVar("INTERNAL_S3_ENDPOINT_HOST"),
     internal_endpoint_port=EnvVar("INTERNAL_S3_ENDPOINT_PORT"),
-    landing_bucket=EnvVar("S3_LANDING_BUCKET"),
     bronze_bucket=EnvVar("S3_BRONZE_BUCKET"),
     silver_bucket=EnvVar("S3_SILVER_BUCKET"),
     gold_bucket=EnvVar("S3_GOLD_BUCKET"),
@@ -57,15 +60,18 @@ pipes_boto3_s3_client = boto3.client(
     aws_secret_access_key=resolved_secret_access_key,
 )
 
-# --- Load Assets --- 
+# --- Load Assets ---
 
-all_assets = load_assets_from_modules([
-    ingestion_assets,
-    transformation_assets,
-])
+all_assets = load_assets_from_modules(
+    [
+        ingestion_assets,
+        combine,
+        detection,
+    ]
+)
 
 
-# --- Define Definitions --- 
+# --- Define Definitions ---
 
 defs = Definitions(
     assets=all_assets,

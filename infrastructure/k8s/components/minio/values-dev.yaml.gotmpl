@@ -27,10 +27,6 @@ persistence:
 # NOTE: Helmfile needs access to these environment variables during execution,
 # or you must replace e.g., "${S3_LANDING_BUCKET}" with the actual static name.
 buckets:
-  - name: "ateda-landing"
-    policy: none
-    purge: false
-    # versioning: false # Optional
   - name: "ateda-bronze"
     policy: none
     purge: false
