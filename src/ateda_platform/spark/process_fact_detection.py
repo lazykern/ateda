@@ -39,7 +39,8 @@ def main():
         pipes.log.info(f"Starting Spark processing for input: {args.input_dir}")
 
         df = (
-            spark.read.parquet(args.input_dir)
+            spark.read.format("parquet")
+            .load(args.input_dir)
             .select(["objectId", "candidate.*"])
             .withColumn(
                 "isdiffpos",
