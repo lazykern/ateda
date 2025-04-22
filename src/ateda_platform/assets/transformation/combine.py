@@ -98,7 +98,7 @@ class CombineAlertsConfig(Config):  # Inherit directly from Config
 # --- Asset Definition --- #
 @asset(
     name="combined_ztf_alerts",
-    key_prefix=["silver"],  # Or "intermediate"
+    key_prefix=["bronze"],  # Changed from silver to bronze
     group_name="transformation_kube",
     description="Combines small raw ZTF AVRO alert files into larger Parquet files using Spark.",
     partitions_def=daily_partitions,
