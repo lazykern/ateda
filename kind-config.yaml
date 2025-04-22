@@ -9,6 +9,9 @@ nodes:
     nodeRegistration:
       kubeletExtraArgs:
         node-labels: "ingress-ready=true"
+  extraMounts:
+  - hostPath: /mnt/ateda/shared
+    containerPath: /mnt/ateda/shared
   extraPortMappings:
   # Map host port 9000 to NodePort 30000 (for Minio API Service)
   - containerPort: 30000
@@ -38,3 +41,7 @@ nodes:
   - containerPort: 30120
     hostPort: 19120
     protocol: TCP
+- role: worker
+  extraMounts:
+  - hostPath: /mnt/ateda/shared
+    containerPath: /mnt/ateda/shared

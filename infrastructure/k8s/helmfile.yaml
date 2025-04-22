@@ -23,6 +23,8 @@ repositories:
     url: https://starrocks.github.io/starrocks-kubernetes-operator
   - name: spark-operator
     url: https://kubeflow.github.io/spark-operator
+  - name: metrics-server-repo
+    url: https://kubernetes-sigs.github.io/metrics-server/
 
 ---
 
@@ -131,3 +133,15 @@ releases:
     version: "2.1.1"
     values:
       - "./components/spark-operator/values-{{ .Values.environment }}.yaml.gotmpl"
+
+  # --- Metrics Server --- # Added for node/pod resource monitoring
+  - name: "metrics-server"
+    # Deployed cluster-wide, often in kube-system
+    namespace: "kube-system"
+    chart: metrics-server-repo/metrics-server
+    version: "3.12.2"
+    # Values needed for many local clusters (e.g., Docker Desktop, Kind, Minikube)
+    values:
+      - args:
+          - --kubelet-insecure-tls
+          - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
