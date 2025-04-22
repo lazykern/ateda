@@ -1,6 +1,5 @@
-from dagster import Definitions, load_assets_from_modules, EnvVar
+from dagster import Definitions, EnvVar
 from dagster_aws.s3 import S3Resource
-import boto3
 from .resources import (
     AWSConfig,
     S3Config,
@@ -9,10 +8,11 @@ from .resources import (
     SparkOperatorResource,
 )
 
-# Load assets
-from .assets.ingestion import assets as ingestion_assets
-from .assets.transformation import combine, detection
-
+# --- Import Assets ---
+from .assets import (
+    ingestion,
+    transformation,
+)
 # --- Define Resources ---
 
 # Instantiate configuration resources using EnvVar
@@ -41,10 +41,17 @@ rest_catalog_config = RestCatalogConfig(
 pipes_config = PipesConfig(bucket=EnvVar("DAGSTER_PIPES_BUCKET"))
 
 # Resolve endpoint URL and credentials at definition time for S3Resource
-resolved_endpoint_url = f"{EnvVar('S3_ENDPOINT_SCHEME').get_value()}://{EnvVar('S3_ENDPOINT_HOST').get_value()}:{EnvVar('S3_ENDPOINT_PORT').get_value()}"
-resolved_access_key_id = EnvVar("AWS_ACCESS_KEY_ID").get_value()
-resolved_secret_access_key = EnvVar("AWS_SECRET_ACCESS_KEY").get_value()
-resolved_pipes_bucket = EnvVar("DAGSTER_PIPES_BUCKET").get_value()
+# Check if EnvVars exist before trying to get value
+resolved_endpoint_url = None
+scheme = EnvVar('S3_ENDPOINT_SCHEME').get_value(None)
+host = EnvVar('S3_ENDPOINT_HOST').get_value(None)
+port = EnvVar('S3_ENDPOINT_PORT').get_value(None)
+if scheme and host and port:
+    resolved_endpoint_url = f"{scheme}://{host}:{port}"
+
+resolved_access_key_id = EnvVar("AWS_ACCESS_KEY_ID").get_value(None)
+resolved_secret_access_key = EnvVar("AWS_SECRET_ACCESS_KEY").get_value(None)
+resolved_pipes_bucket = EnvVar("DAGSTER_PIPES_BUCKET").get_value(None)
 
 # Define operational resources using the resolved values
 s3_resource = S3Resource(
@@ -54,35 +61,34 @@ s3_resource = S3Resource(
 )
 
 # Configure Pipes Resources with resolved values
-pipes_boto3_s3_client = boto3.client(
-    "s3",
-    endpoint_url=resolved_endpoint_url,
-    aws_access_key_id=resolved_access_key_id,
-    aws_secret_access_key=resolved_secret_access_key,
+# pipes_boto3_s3_client = boto3.client(
+#     "s3",
+#     endpoint_url=resolved_endpoint_url,
+#     aws_access_key_id=resolved_access_key_id,
+#     aws_secret_access_key=resolved_secret_access_key,
+# ) # This client doesn't seem to be used, commenting out for now
+
+# --- Define Merged Definitions ---
+
+spark_operator_resource = SparkOperatorResource(
+    cleanup_on_success=True,
+    cleanup_on_failure=False,
 )
 
-# --- Load Assets ---
+# Define global resources separately
+global_resources = {
+    "s3": s3_resource,
+    # Config resources
+    "aws_config": aws_config,
+    "s3_config": s3_config,
+    "rest_catalog_config": rest_catalog_config,
+    "pipes_config": pipes_config,
+    "spark_operator": spark_operator_resource,
+}
 
-all_assets = load_assets_from_modules(
-    [
-        ingestion_assets,
-        combine,
-        detection,
-    ]
-)
+assets = [
+    *ingestion.assets,
+    *transformation.assets,
+]
 
-
-# --- Define Definitions ---
-
-defs = Definitions(
-    assets=all_assets,
-    resources={
-        "s3": s3_resource,
-        # Config resources
-        "aws_config": aws_config,
-        "s3_config": s3_config,
-        "rest_catalog_config": rest_catalog_config,
-        "pipes_config": pipes_config,
-        "spark_operator": SparkOperatorResource(),
-    },
-)
+defs = Definitions(resources=global_resources, assets=assets)
