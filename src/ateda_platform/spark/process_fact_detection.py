@@ -98,7 +98,7 @@ def main():
         pipes.report_asset_materialization(
             metadata={
                 "table": table_name,
-                "num_records_merged": {"raw_value": count, "type": "int"},
+                "num_records_merged": count,
                 "input_directory": args.input_dir,
             }
         )
