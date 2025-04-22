@@ -11,7 +11,6 @@ from dagster_pipes import (
 from pyspark.sql import SparkSession
 from pyspark.sql.utils import AnalysisException
 
-# Target size for output Parquet files (in MB)
 TARGET_FILE_SIZE_MB = 256
 
 def main():
@@ -43,8 +42,8 @@ def main():
 
         spark.conf.set("spark.sql.parquet.compression.codec", "zstd")
 
-        input_path = args.input_dir
-        output_path = args.output_dir
+        input_path: str = args.input_dir
+        output_path: str = args.output_dir
 
         try:
             # Read the input Avro files
@@ -97,15 +96,12 @@ def main():
             # Report Materialization
             pipes.report_asset_materialization(
                 metadata={
-                    # Report the S3 path, not the URI, but it's already an S3 path
                     "output_path": output_path,
                     "output_format": "parquet",
                     "calculated_partitions": num_partitions,
                     "target_file_size_mb": TARGET_FILE_SIZE_MB,
-                    # Report the OS path for input too
                     "input_path": input_path.replace("file://", ""),
-                    "input_files_count": num_input_files, # Might be 0 if estimation failed
-                    "input_total_size_mb": round(total_size_bytes / (1024**2), 2), # Might be 0
+                    "input_files_count": num_input_files,
                 }
             )
 
@@ -114,11 +110,9 @@ def main():
                 pipes.log.warning(f"Input path not found or empty: {input_path}. Skipping processing and reporting empty materialization.")
                 # Report an empty materialization to indicate the asset ran but found no data
                 pipes.report_asset_materialization(
-                     metadata={
-                        # Report S3 path here too
+                    metadata={
                         "output_path": output_path,
                         "status": "skipped_empty_input",
-                        # Input path is still local file system
                         "input_path": input_path.replace("file://", ""),
                     }
                 )
