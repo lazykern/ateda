@@ -31,6 +31,7 @@ MD5SUMS_URL = f"{ZTF_ALERT_ARCHIVE_BASE_URL}/MD5SUMS"
 
 logger = get_dagster_logger()
 
+
 # --- Helper Functions ---
 def calculate_md5(filepath: Path, chunk_size=8192) -> str:
     """Calculate MD5 hash of a file efficiently."""
@@ -47,13 +48,14 @@ def calculate_md5(filepath: Path, chunk_size=8192) -> str:
         logger.error(f"Error calculating MD5 for {filepath}: {e}")
         return ""
 
+
 def get_expected_md5s(url: str) -> dict[str, str]:
     """Download and parse the MD5SUMS file."""
     expected_md5s = {}
     try:
         with urllib.request.urlopen(url) as response:
             if response.status == 200:
-                lines = response.read().decode('utf-8').splitlines()
+                lines = response.read().decode("utf-8").splitlines()
                 for line in lines:
                     parts = line.split()
                     if len(parts) >= 2:
@@ -62,12 +64,15 @@ def get_expected_md5s(url: str) -> dict[str, str]:
                         filename = Path(parts[-1]).name
                         expected_md5s[filename] = md5_hash
             else:
-                logger.error(f"Failed to download MD5SUMS from {url}. Status: {response.status}")
+                logger.error(
+                    f"Failed to download MD5SUMS from {url}. Status: {response.status}"
+                )
     except urllib.error.URLError as e:
         logger.error(f"Error accessing MD5SUMS URL {url}: {e}")
     except Exception as e:
         logger.error(f"Error processing MD5SUMS from {url}: {e}")
     return expected_md5s
+
 
 def _download_and_verify_archive(
     archive_url: str,
@@ -114,30 +119,40 @@ def _download_and_verify_archive(
                     download_needed = False
                     skip_reason = "MD5 match on existing file"
                 elif local_md5:
-                    logger.warning(f"MD5 mismatch for {temp_file_path}. Expected: {expected_md5}, Found: {local_md5}. File is corrupt or incomplete. Re-downloading.")
+                    logger.warning(
+                        f"MD5 mismatch for {temp_file_path}. Expected: {expected_md5}, Found: {local_md5}. File is corrupt or incomplete. Re-downloading."
+                    )
                     skip_reason = "MD5 mismatch"
                 else:
-                    logger.warning(f"Could not calculate MD5 for existing {temp_file_path}. Re-downloading.")
+                    logger.warning(
+                        f"Could not calculate MD5 for existing {temp_file_path}. Re-downloading."
+                    )
                     skip_reason = "MD5 calculation failed"
             else:
-                logger.warning(f"Could not find expected MD5 for {filename} in {MD5SUMS_URL}. Cannot verify existing file integrity. Re-downloading.")
+                logger.warning(
+                    f"Could not find expected MD5 for {filename} in {MD5SUMS_URL}. Cannot verify existing file integrity. Re-downloading."
+                )
                 skip_reason = "Expected MD5 not found"
 
             # If download IS needed (MD5 mismatch/error), cleanup needed before redownload
             if download_needed:
-                logger.info(f"Cleaning up potentially corrupt directory due to: {skip_reason}")
+                logger.info(
+                    f"Cleaning up potentially corrupt directory due to: {skip_reason}"
+                )
                 try:
                     shutil.rmtree(temp_dir_path)
                 except OSError as e:
                     logger.error(f"Error removing directory {temp_dir_path}: {e}")
-                    raise # Cannot proceed if cleanup fails
-                temp_dir_path.mkdir() # Recreate clean directory
+                    raise  # Cannot proceed if cleanup fails
+                temp_dir_path.mkdir()  # Recreate clean directory
 
-        else: # Directory exists, but file is missing
-            logger.info(f"Tarball {temp_file_path} missing in existing directory. Proceeding with download.")
+        else:  # Directory exists, but file is missing
+            logger.info(
+                f"Tarball {temp_file_path} missing in existing directory. Proceeding with download."
+            )
             # download_needed is already True
 
-    else: # Directory doesn't exist
+    else:  # Directory doesn't exist
         logger.info(f"Creating temporary directory: {temp_dir_path}")
         temp_dir_path.mkdir()
         # download_needed is already True
@@ -148,11 +163,15 @@ def _download_and_verify_archive(
         cmd = [
             "aria2c",
             "-c",  # Resume partial downloads
-            "-x", "4",
-            "-s", "4",
+            "-x",
+            "4",
+            "-s",
+            "4",
             "--file-allocation=falloc",
-            "--dir", str(temp_dir_path),
-            "--out", filename,
+            "--dir",
+            str(temp_dir_path),
+            "--out",
+            filename,
             "--log-level=warn",
             "--log=-",
             "--show-console-readout=false",
@@ -189,13 +208,19 @@ def _download_and_verify_archive(
             if local_md5 and local_md5 == expected_md5:
                 logger.info(f"MD5 check passed after download ({local_md5}).")
             elif local_md5:
-                raise Exception(f"MD5 mismatch after download! Expected {expected_md5}, got {local_md5}. Archive source may be corrupted.")
+                raise Exception(
+                    f"MD5 mismatch after download! Expected {expected_md5}, got {local_md5}. Archive source may be corrupted."
+                )
             else:
-                raise Exception(f"Could not calculate MD5 after download for {temp_file_path}. Download likely failed silently.")
+                raise Exception(
+                    f"Could not calculate MD5 after download for {temp_file_path}. Download likely failed silently."
+                )
         else:
-             logger.warning(f"Could not find expected MD5 for {filename}. Skipping post-download verification.")
+            logger.warning(
+                f"Could not find expected MD5 for {filename}. Skipping post-download verification."
+            )
 
-        logger.info(f"Download completed successfully.")
+        logger.info("Download completed successfully.")
     else:
         logger.info(f"Download skipped: {skip_reason}")
 
@@ -232,16 +257,20 @@ def _process_batch(
     """
     # Use standard Python logging for multiprocessing workers
     worker_logger = logging.getLogger(f"process_batch_{batch_idx}")
-    worker_logger.setLevel(logging.INFO) # Adjust level as needed
+    worker_logger.setLevel(logging.INFO)  # Adjust level as needed
     # Basic handler, configure more robustly if needed (e.g., QueueHandler)
     if not worker_logger.hasHandlers():
         handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
         handler.setFormatter(formatter)
         worker_logger.addHandler(handler)
 
     target_s3_path = f"{s3_base_path}/part_{batch_idx:05d}.parquet"
-    worker_logger.info(f"Processing batch {batch_idx} ({len(batch_files)} files) -> {target_s3_path}")
+    worker_logger.info(
+        f"Processing batch {batch_idx} ({len(batch_files)} files) -> {target_s3_path}"
+    )
 
     conn = duckdb.connect(database=":memory:", read_only=False)
     try:
@@ -274,7 +303,10 @@ def _process_batch(
         worker_logger.info(f"Finished DuckDB COPY for batch {batch_idx}")
         return target_s3_path
     except Exception as e:
-        worker_logger.error(f"Error processing batch {batch_idx} -> {target_s3_path}: {e}", exc_info=True)
+        worker_logger.error(
+            f"Error processing batch {batch_idx} -> {target_s3_path}: {e}",
+            exc_info=True,
+        )
         # Re-raise the exception so the main process knows about the failure
         raise Exception(f"Failed to process batch {batch_idx}: {e}") from e
     finally:
@@ -320,7 +352,7 @@ def bronze_raw_ztf_alert(
     # Construct predictable temporary directory path based on asset key and partition
     # Sanitize asset key for directory name
     sanitized_asset_key = context.asset_key.to_user_string().replace("/", "_")
-    base_asset_temp_dir = Path(tempfile.gettempdir()) / sanitized_asset_key
+    base_asset_temp_dir = Path("data/") / sanitized_asset_key
     temp_dir_path = base_asset_temp_dir / f"download_{partition_date_str}"
 
     expected_md5s = get_expected_md5s(MD5SUMS_URL)
@@ -342,11 +374,11 @@ def bronze_raw_ztf_alert(
         extract_dir = temp_dir_path / "extracted"
         logger.info(f"Extracting {downloaded_file_path} to {extract_dir}")
         try:
-            extract_dir.mkdir(exist_ok=True) # Create extraction subdir
+            extract_dir.mkdir(exist_ok=True)  # Create extraction subdir
             with tarfile.open(downloaded_file_path, "r:gz") as tar:
-                tar.extractall(path=extract_dir) # Extract into subdir
+                tar.extractall(path=extract_dir)  # Extract into subdir
             alert_files = list(
-                extract_dir.glob("*.avro") # Glob within subdir
+                extract_dir.glob("*.avro")  # Glob within subdir
             )  # Re-list after extraction
             logger.info(
                 f"Extraction successful. Found {len(alert_files)} .avro files in {extract_dir}."
@@ -406,16 +438,16 @@ def bronze_raw_ztf_alert(
         s3_use_ssl = str(getattr(s3_config, "use_ssl", False)).lower()
 
         if not all([aws_key, aws_secret, s3_endpoint_host, s3_endpoint_port]):
-            raise ValueError(
-                "Missing required AWS/S3 configuration for DuckDB Secret."
-            )
+            raise ValueError("Missing required AWS/S3 configuration for DuckDB Secret.")
 
         endpoint_url = f"{s3_endpoint_host}:{s3_endpoint_port}"
 
         # --- Parallel Processing with DuckDB using multiprocessing.Pool ---
-        logger.info(f"Starting parallel upload of {len(batches)} batches to {s3_path}/ using multiprocessing.Pool")
-        results = {} # Store results keyed by batch_idx
-        pool = None # Initialize pool variable
+        logger.info(
+            f"Starting parallel upload of {len(batches)} batches to {s3_path}/ using multiprocessing.Pool"
+        )
+        results = {}  # Store results keyed by batch_idx
+        pool = None  # Initialize pool variable
 
         # Limit the number of concurrent worker processes
         max_worker_processes = 4
@@ -446,16 +478,18 @@ def bronze_raw_ztf_alert(
             processed_indices = set()
 
             while num_completed < total_batches:
-                remaining_results = [(idx, r) for idx, r in async_results if idx not in processed_indices]
+                remaining_results = [
+                    (idx, r) for idx, r in async_results if idx not in processed_indices
+                ]
                 if not remaining_results:
-                    break # Should not happen if num_completed < total_batches, but safety break
+                    break  # Should not happen if num_completed < total_batches, but safety break
 
                 # Check one result at a time with a short timeout
                 # This allows faster detection of failure than iterating completed()
                 idx, async_result = remaining_results[0]
                 try:
                     # Use a timeout to avoid blocking indefinitely if a task hangs
-                    result_path = async_result.get(timeout=1.0) # Check every second
+                    result_path = async_result.get(timeout=1.0)  # Check every second
                     results[idx] = result_path
                     logger.info(f"Successfully processed batch {idx} -> {result_path}")
                     processed_indices.add(idx)
@@ -465,32 +499,40 @@ def bronze_raw_ztf_alert(
                     pass
                 except Exception as exc:
                     # A task failed!
-                    logger.error(f"Batch {idx} generated an exception: {exc}. Terminating pool.")
-                    pool.terminate() # Forcefully stop other workers
-                    pool.join()      # Wait for workers to terminate
+                    logger.error(
+                        f"Batch {idx} generated an exception: {exc}. Terminating pool."
+                    )
+                    pool.terminate()  # Forcefully stop other workers
+                    pool.join()  # Wait for workers to terminate
                     # Re-raise the first exception encountered to fail the asset
-                    raise Exception(f"Processing failed for batch {idx}: {exc}") from exc
+                    raise Exception(
+                        f"Processing failed for batch {idx}: {exc}"
+                    ) from exc
 
             # If loop finishes without exceptions, close pool cleanly
             pool.close()
             pool.join()
             logger.info(f"Finished processing all {len(results)} batches successfully.")
 
-        except Exception as main_exc: # Catch exceptions raised within the try (incl. re-raised ones)
-             logger.error(f"An error occurred during parallel processing: {main_exc}")
-             if pool:
-                 # Ensure pool is terminated even if error happened outside the get() loop
-                 pool.terminate()
-                 pool.join()
-             raise # Re-raise the exception to fail the asset
+        except (
+            Exception
+        ) as main_exc:  # Catch exceptions raised within the try (incl. re-raised ones)
+            logger.error(f"An error occurred during parallel processing: {main_exc}")
+            if pool:
+                # Ensure pool is terminated even if error happened outside the get() loop
+                pool.terminate()
+                pool.join()
+            raise  # Re-raise the exception to fail the asset
         finally:
-             # Final safety net for pool cleanup if something unexpected happened
-             if pool and not pool._state == multiprocessing.pool.TERMINATE:
-                  try:
-                      pool.terminate()
-                      pool.join()
-                  except Exception as pool_term_exc:
-                      logger.error(f"Error during final pool termination: {pool_term_exc}")
+            # Final safety net for pool cleanup if something unexpected happened
+            if pool and not pool._state == multiprocessing.pool.TERMINATE:
+                try:
+                    pool.terminate()
+                    pool.join()
+                except Exception as pool_term_exc:
+                    logger.error(
+                        f"Error during final pool termination: {pool_term_exc}"
+                    )
 
         context.add_output_metadata(
             {
@@ -499,7 +541,7 @@ def bronze_raw_ztf_alert(
                 "total_size": total_size,
                 "source_url": archive_url,
                 "output_path": s3_path,
-                "download_skipped": download_skipped, 
+                "download_skipped": download_skipped,
             }
         )
 

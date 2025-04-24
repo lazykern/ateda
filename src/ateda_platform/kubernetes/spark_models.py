@@ -12,33 +12,42 @@ SPARK_OP_PLURAL = "sparkapplications"
 # NOTE: Using PydanticField for Pydantic's Field to avoid conflict with Dagster's Field
 # (Dagster Field isn't needed here anyway)
 
+
 class ObjectMeta(BaseModel):
     name: str
     namespace: str
     labels: Optional[Dict[str, str]] = None
 
+
 class EmptyDirVolumeSource(BaseModel):
-    pass # Represents {}
+    pass  # Represents {}
+
 
 class HostPathVolumeSource(BaseModel):
     path: str
     type: Optional[str] = None
 
+
 class PersistentVolumeClaimSource(BaseModel):
     claimName: str
     readOnly: Optional[bool] = PydanticField(default=None)
+
 
 class Volume(BaseModel):
     name: str
     emptyDir: Optional[EmptyDirVolumeSource] = PydanticField(default=None)
     hostPath: Optional[HostPathVolumeSource] = PydanticField(default=None)
-    persistentVolumeClaim: Optional[PersistentVolumeClaimSource] = PydanticField(default=None)
+    persistentVolumeClaim: Optional[PersistentVolumeClaimSource] = PydanticField(
+        default=None
+    )
+
 
 class VolumeMount(BaseModel):
     name: str
     mountPath: str
 
-class PodSpecBase(BaseModel): # Base for Driver/Executor
+
+class PodSpecBase(BaseModel):  # Base for Driver/Executor
     cores: Optional[int] = None
     memory: Optional[str] = None
     labels: Optional[Dict[str, str]] = None
@@ -48,14 +57,18 @@ class PodSpecBase(BaseModel): # Base for Driver/Executor
     envVars: Optional[Dict[str, str]] = PydanticField(default=None)
     volumeMounts: Optional[List[VolumeMount]] = PydanticField(default=None)
 
-    model_config = {"populate_by_name": True} # Allow using field names without alias for init
+    model_config = {
+        "populate_by_name": True
+    }  # Allow using field names without alias for init
 
 
 class DriverSpec(PodSpecBase):
     pass
 
+
 class ExecutorSpec(PodSpecBase):
     instances: Optional[int] = None
+
 
 class DynamicAllocation(BaseModel):
     enabled: bool
@@ -64,8 +77,10 @@ class DynamicAllocation(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+
 class RestartPolicy(BaseModel):
-    type: str # e.g., "Never"
+    type: str  # e.g., "Never"
+
 
 class SparkApplicationSpec(BaseModel):
     type: str
@@ -85,6 +100,7 @@ class SparkApplicationSpec(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+
 class SparkApplication(BaseModel):
     # Use PydanticField with alias for fields clashing with Python keywords or needing specific K8s naming
     apiVersion: str = PydanticField(default=f"{SPARK_OP_GROUP}/{SPARK_OP_VERSION}")
@@ -94,13 +110,13 @@ class SparkApplication(BaseModel):
 
     # Pydantic V2 config
     model_config = {
-        "exclude_none": True, # Don't include None values in the output dict
-        "populate_by_name": True, # Allow using Python names for aliased fields during instantiation
-        "extra": "ignore", # Ignore extra fields during instantiation if needed, 'forbid' is stricter
-        "by_alias": False # Default serialization uses field names, use True for aliases if needed in output
+        "exclude_none": True,  # Don't include None values in the output dict
+        "populate_by_name": True,  # Allow using Python names for aliased fields during instantiation
+        "extra": "ignore",  # Ignore extra fields during instantiation if needed, 'forbid' is stricter
+        "by_alias": False,  # Default serialization uses field names, use True for aliases if needed in output
     }
 
     # Helper to get dict compatible with K8s client (uses aliases)
     def to_dict(self) -> Dict:
         # Use model_dump with by_alias=True for the final K8s submission
-        return self.model_dump(mode='python', by_alias=True, exclude_none=True) 
+        return self.model_dump(mode="python", by_alias=True, exclude_none=True)

@@ -43,9 +43,9 @@ pipes_config = PipesConfig(bucket=EnvVar("DAGSTER_PIPES_BUCKET"))
 # Resolve endpoint URL and credentials at definition time for S3Resource
 # Check if EnvVars exist before trying to get value
 resolved_endpoint_url = None
-scheme = EnvVar('S3_ENDPOINT_SCHEME').get_value(None)
-host = EnvVar('S3_ENDPOINT_HOST').get_value(None)
-port = EnvVar('S3_ENDPOINT_PORT').get_value(None)
+scheme = EnvVar("S3_ENDPOINT_SCHEME").get_value(None)
+host = EnvVar("S3_ENDPOINT_HOST").get_value(None)
+port = EnvVar("S3_ENDPOINT_PORT").get_value(None)
 if scheme and host and port:
     resolved_endpoint_url = f"{scheme}://{host}:{port}"
 

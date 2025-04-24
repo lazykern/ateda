@@ -6,7 +6,7 @@ from dagster import (
     get_dagster_logger,
     open_pipes_session,
     Failure,
-    Config
+    Config,
 )
 from dagster_aws.s3 import S3Resource
 from dagster_aws.pipes import (
@@ -22,7 +22,7 @@ from ...resources import (
     S3Config,
     RestCatalogConfig,
     PipesConfig,
-    SparkOperatorResource
+    SparkOperatorResource,
 )
 from ...partitions import daily_partitions
 
@@ -43,32 +43,54 @@ from ..ingestion import bronze_raw_ztf_alert
 
 logger = get_dagster_logger()
 
+
 # --- Configuration specific to this asset --- #
 class SilverZtfFactDetectionConfig(Config):
     detection_script_s3_key: str = PydanticField(
         default="spark/fact_detection.py",
-        description="S3 key for the Python script that performs fact detection and Iceberg merge."
+        description="S3 key for the Python script that performs fact detection and Iceberg merge.",
     )
-    namespace: str = PydanticField(default="ateda-dev", description="Kubernetes namespace.")
+    namespace: str = PydanticField(
+        default="ateda-dev", description="Kubernetes namespace."
+    )
     spark_image: str = PydanticField(
         default="ghcr.io/lazykern/ateda-spark-runtime:latest",
-        description="Spark runtime image."
+        description="Spark runtime image.",
     )
     spark_version: str = PydanticField(default="3.5.5", description="Spark version.")
     service_account: str = PydanticField(
         default="spark-operator-spark", description="Service account for Spark driver."
     )
-    image_pull_policy: str = PydanticField(default="IfNotPresent", description="Image pull policy.")
-    driver_cores: int = PydanticField(default=2, description="Driver cores (increased for metadata overhead).")
-    driver_memory: str = PydanticField(default="2g", description="Driver memory (increased for metadata overhead).")
+    image_pull_policy: str = PydanticField(
+        default="IfNotPresent", description="Image pull policy."
+    )
+    driver_cores: int = PydanticField(
+        default=2, description="Driver cores (increased for metadata overhead)."
+    )
+    driver_memory: str = PydanticField(
+        default="2g", description="Driver memory (increased for metadata overhead)."
+    )
     executor_cores: int = PydanticField(default=1, description="Executor cores.")
-    executor_memory: str = PydanticField(default="2560m", description="Executor memory (adjusted for limited RAM).")
-    dynamic_allocation_enabled: bool = PydanticField(default=True, description="Enable dynamic allocation.")
+    executor_memory: str = PydanticField(
+        default="2560m", description="Executor memory (adjusted for limited RAM)."
+    )
+    dynamic_allocation_enabled: bool = PydanticField(
+        default=True, description="Enable dynamic allocation."
+    )
     min_executors: int = PydanticField(default=1, description="Min executors.")
-    max_executors: int = PydanticField(default=2, description="Max executors (limited by RAM).")
-    executor_memory_overhead: str = PydanticField(default="512m", description="Executor memory overhead.")
-    shuffle_partitions: str = PydanticField(default="200", description="Spark SQL shuffle partitions (increased slightly).")
-    s3_max_connections: str = PydanticField(default="200", description="Max S3 connections.")
+    max_executors: int = PydanticField(
+        default=2, description="Max executors (limited by RAM)."
+    )
+    executor_memory_overhead: str = PydanticField(
+        default="512m", description="Executor memory overhead."
+    )
+    shuffle_partitions: str = PydanticField(
+        default="200", description="Spark SQL shuffle partitions (increased slightly)."
+    )
+    s3_max_connections: str = PydanticField(
+        default="200", description="Max S3 connections."
+    )
+
 
 # --- Asset Definition --- #
 @asset(
@@ -102,7 +124,9 @@ def silver_fact_detection(
 
     input_uri = bronze_raw_ztf_alert_result.replace("s3://", "s3a://")
     if not input_uri or not input_uri.startswith("s3a://"):
-        raise Failure(f"Received invalid input path from upstream. Expected S3 URI, got: {input_uri}")
+        raise Failure(
+            f"Received invalid input path from upstream. Expected S3 URI, got: {input_uri}"
+        )
     logger.info(f"Detection Job - Input S3 URI: {input_uri}")
 
     # --- Prepare Paths and Parameters --- #
@@ -118,20 +142,23 @@ def silver_fact_detection(
 
     # --- Set up Pipes --- #
     pipes_s3_client = boto3.client(
-        's3',
+        "s3",
         endpoint_url=s3_config.endpoint_url,
         aws_access_key_id=access_key_id,
         aws_secret_access_key=secret_access_key,
     )
-    context_injector = PipesS3ContextInjector(client=pipes_s3_client, bucket=pipes_bucket)
-    message_reader = PipesS3MessageReader(client=pipes_s3_client, bucket=pipes_bucket, include_stdio_in_messages=True)
+    context_injector = PipesS3ContextInjector(
+        client=pipes_s3_client, bucket=pipes_bucket
+    )
+    message_reader = PipesS3MessageReader(
+        client=pipes_s3_client, bucket=pipes_bucket, include_stdio_in_messages=True
+    )
 
     with open_pipes_session(
         context=context,
         context_injector=context_injector,
         message_reader=message_reader,
     ) as session:
-
         # Get Pipes CLI Arguments
         pipes_cli_params_dict = session.get_bootstrap_cli_arguments()
         pipes_cli_args_list = []
@@ -140,39 +167,54 @@ def silver_fact_detection(
 
         # --- Spark Job Arguments --- #
         spark_args = [
-            "--input-dir", input_uri,
-            "--warehouse-name", silver_warehouse_name,
-            "--database-name", silver_database_name,
+            "--input-dir",
+            input_uri,
+            "--warehouse-name",
+            silver_warehouse_name,
+            "--database-name",
+            silver_database_name,
         ]
         final_spark_script_args = spark_args + pipes_cli_args_list
 
         # --- Check Spark script existence ---
         main_application_file_key = config.detection_script_s3_key
         code_bucket = s3_config.code_bucket
-        s3_client = s3.get_client() # Use the S3Resource client
+        s3_client = s3.get_client()  # Use the S3Resource client
         try:
             s3_client.head_object(Bucket=code_bucket, Key=main_application_file_key)
-            logger.info(f"Confirmed Spark script exists at s3://{code_bucket}/{main_application_file_key}")
+            logger.info(
+                f"Confirmed Spark script exists at s3://{code_bucket}/{main_application_file_key}"
+            )
         except s3_client.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == '404':
-                logger.error(f"Spark script not found at s3://{code_bucket}/{main_application_file_key}")
-                raise FileNotFoundError(f"Spark script {main_application_file_key} not found in bucket {code_bucket}.") from e
+            if e.response["Error"]["Code"] == "404":
+                logger.error(
+                    f"Spark script not found at s3://{code_bucket}/{main_application_file_key}"
+                )
+                raise FileNotFoundError(
+                    f"Spark script {main_application_file_key} not found in bucket {code_bucket}."
+                ) from e
             else:
                 logger.error(f"Error checking Spark script existence: {e}")
-                raise Failure(f"Error checking Spark script s3://{code_bucket}/{main_application_file_key}") from e
+                raise Failure(
+                    f"Error checking Spark script s3://{code_bucket}/{main_application_file_key}"
+                ) from e
         except Exception as e:
             logger.error(f"Unexpected error checking Spark script existence: {e}")
-            raise Failure(f"Unexpected error checking Spark script s3://{code_bucket}/{main_application_file_key}") from e
+            raise Failure(
+                f"Unexpected error checking Spark script s3://{code_bucket}/{main_application_file_key}"
+            ) from e
 
         # --- Build Spark Application Object --- #
         app_name = f"fact-detection-{context.partition_key or 'unpartitioned'}-{context.run_id[:8]}"
-        app_name = "".join(c for c in app_name if c.isalnum() or c == '-').lower()[:63]
-        main_application_file = f"s3a://{code_bucket}/{main_application_file_key}" # Use verified key
+        app_name = "".join(c for c in app_name if c.isalnum() or c == "-").lower()[:63]
+        main_application_file = (
+            f"s3a://{code_bucket}/{main_application_file_key}"  # Use verified key
+        )
 
         # Common elements
         common_labels = {
             "dagster.io/run_id": context.run_id,
-            "dagster.io/asset": context.asset_key.to_user_string().replace('/', '_'),
+            "dagster.io/asset": context.asset_key.to_user_string().replace("/", "_"),
             "dagster.io/partition": context.partition_key or "default",
             "version": config.spark_version,
         }
@@ -213,8 +255,8 @@ def silver_fact_detection(
             "spark.sql.adaptive.coalescePartitions.enabled": "true",
             "spark.dynamicAllocation.shuffleTracking.enabled": "true",
             # >> NEW/MODIFIED CONFIGS FOR OPTIMIZATION <<
-            "spark.sql.files.maxPartitionBytes": "512m", # Group small files during read
-            "spark.sql.adaptive.coalescePartitions.minPartitionNum": "1", # Prevent over-coalescing
+            "spark.sql.files.maxPartitionBytes": "512m",  # Group small files during read
+            "spark.sql.adaptive.coalescePartitions.minPartitionNum": "1",  # Prevent over-coalescing
             # Apply Overrides from Config
             "spark.executor.memoryOverhead": config.executor_memory_overhead,
             "spark.sql.shuffle.partitions": config.shuffle_partitions,
@@ -233,9 +275,7 @@ def silver_fact_detection(
 
         spark_app = SparkApplication(
             metadata=ObjectMeta(
-                name=app_name,
-                namespace=config.namespace,
-                labels=common_labels
+                name=app_name, namespace=config.namespace, labels=common_labels
             ),
             spec=SparkApplicationSpec(
                 type="Python",
@@ -270,7 +310,7 @@ def silver_fact_detection(
                     maxExecutors=config.max_executors,
                 ),
                 sparkConf=base_spark_conf,
-            )
+            ),
         )
 
         # --- Run the Spark Job using the Resource --- #

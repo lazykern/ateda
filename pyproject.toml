@@ -5,33 +5,31 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "psycopg2-binary>=2.9.10",
-    "boto3>=1.37.33",
-    "requests>=2.32.3",
-    "dagster>=1.10.11",
-    "dagster-postgres>=0.26.11",
-    "dagster-aws>=0.26.11",
-    "dagster-graphql>=1.10.11",
-    "dagster-webserver>=1.10.11",
-    "dagster-docker>=0.26.11",
-    "dagster-pipes>=1.10.11",
-    "pyspark>=3.5.5",
-    "trino>=0.333.0",
-    "kubernetes>=32.0.1",
-    "pyyaml>=6.0.2",
-    "polars[pyarrow]>=1.27.1",
-    "fastavro>=1.10.0",
-    "pyiceberg>=0.9.0",
-    "pyarrow>=19.0.1",
-    "astropy>=7.0.1",
     "astroquery>=0.4.10",
-    "duckdb>=1.2.2",
+    "astropy>=7.0.1",
+    "boto3>=1.37.33",
+    "dagster-aws>=0.26.11",
+    "dagster-docker>=0.26.11",
+    "dagster-graphql>=1.10.11",
+    "dagster-pipes>=1.10.11",
+    "dagster-postgres>=0.26.11",
+    "dagster-webserver>=1.10.11",
+    "dagster>=1.10.11",
     "dbt-core>=1.9.4",
     "dbt-spark[session]>=1.9.2",
     "dbt-trino>=1.9.1",
-    "boto3-stubs[essential]>=1.38.1",
+    "duckdb>=1.2.2",
+    "fastavro>=1.10.0",
     "ipywidgets>=8.1.6",
-    "awscli>=1.40.0",
+    "kubernetes>=32.0.1",
+    "polars[pyarrow]>=1.27.1",
+    "psycopg2-binary>=2.9.10",
+    "pyarrow>=19.0.1",
+    "pyiceberg>=0.9.0",
+    "pyspark>=3.5.5",
+    "pyyaml>=6.0.2",
+    "requests>=2.32.3",
+    "trino>=0.333.0",
 ]
 license = { text = "MIT" }
 
@@ -41,7 +39,11 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 dev-dependencies = [
+    "awscli>=1.40.0",
+    "boto3-stubs[essential]>=1.38.1",
     "ipykernel>=6.29.5",
+    "mypy>=1.15.0",
+    "ruff>=0.11.6",
 ]
 
 [tool.hatch.build.targets.wheel]
