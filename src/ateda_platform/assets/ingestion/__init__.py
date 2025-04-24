@@ -1,7 +1,5 @@
-from .bronze_ztf_alert_archive import bronze_ztf_alert_archive
-from .bronze_ztf_alert_parquet import bronze_ztf_alert_parquet
+from .bronze_raw_ztf_alert import bronze_raw_ztf_alert
 
 assets = [
-    bronze_ztf_alert_archive,
-    bronze_ztf_alert_parquet,
+    bronze_raw_ztf_alert,
 ]

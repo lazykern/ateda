@@ -63,7 +63,6 @@ def main():
             .withColumn("day", F.dayofmonth("timestamp"))
         )
 
-        # Create or merge into Iceberg table
         df.createOrReplaceTempView("updates")
 
         spark.sql(
@@ -99,7 +98,6 @@ def main():
             metadata={
                 "table": table_name,
                 "num_records_merged": count,
-                "input_directory": args.input_dir,
             }
         )
 

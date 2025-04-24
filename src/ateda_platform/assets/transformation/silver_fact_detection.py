@@ -1,9 +1,4 @@
-import os
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Iterator
-
 from dagster import (
-    PipesExecutionResult,
     asset,
     AssetExecutionContext,
     ResourceParam,
@@ -44,14 +39,14 @@ from ...kubernetes.spark_models import (
     VolumeMount,
     EmptyDirVolumeSource,
 )
-from ..ingestion import bronze_ztf_alert_parquet
+from ..ingestion import bronze_raw_ztf_alert
 
 logger = get_dagster_logger()
 
 # --- Configuration specific to this asset --- #
 class SilverZtfFactDetectionConfig(Config):
     detection_script_s3_key: str = PydanticField(
-        default="spark/process_fact_detection.py",
+        default="spark/fact_detection.py",
         description="S3 key for the Python script that performs fact detection and Iceberg merge."
     )
     namespace: str = PydanticField(default="ateda-dev", description="Kubernetes namespace.")
@@ -64,15 +59,15 @@ class SilverZtfFactDetectionConfig(Config):
         default="spark-operator-spark", description="Service account for Spark driver."
     )
     image_pull_policy: str = PydanticField(default="IfNotPresent", description="Image pull policy.")
-    driver_cores: int = PydanticField(default=1, description="Driver cores.")
-    driver_memory: str = PydanticField(default="1g", description="Driver memory.")
+    driver_cores: int = PydanticField(default=2, description="Driver cores (increased for metadata overhead).")
+    driver_memory: str = PydanticField(default="2g", description="Driver memory (increased for metadata overhead).")
     executor_cores: int = PydanticField(default=1, description="Executor cores.")
-    executor_memory: str = PydanticField(default="1536m", description="Executor memory (default).")
+    executor_memory: str = PydanticField(default="2560m", description="Executor memory (adjusted for limited RAM).")
     dynamic_allocation_enabled: bool = PydanticField(default=True, description="Enable dynamic allocation.")
     min_executors: int = PydanticField(default=1, description="Min executors.")
-    max_executors: int = PydanticField(default=3, description="Max executors.")
-    executor_memory_overhead: str = PydanticField(default="512m", description="Executor memory overhead for Iceberg merge.")
-    shuffle_partitions: str = PydanticField(default="100", description="Spark SQL shuffle partitions.")
+    max_executors: int = PydanticField(default=2, description="Max executors (limited by RAM).")
+    executor_memory_overhead: str = PydanticField(default="512m", description="Executor memory overhead.")
+    shuffle_partitions: str = PydanticField(default="200", description="Spark SQL shuffle partitions (increased slightly).")
     s3_max_connections: str = PydanticField(default="200", description="Max S3 connections.")
 
 # --- Asset Definition --- #
@@ -83,8 +78,14 @@ class SilverZtfFactDetectionConfig(Config):
     description="Processes combined ZTF alerts for fact detection and merges into Iceberg using Spark.",
     partitions_def=daily_partitions,
     kinds={"kubernetes", "spark", "iceberg"},
-    ins={"bronze_ztf_alert_parquet_result": AssetIn(key=bronze_ztf_alert_parquet.key)},
-    metadata={"partition_key": "string"},
+    ins={"bronze_raw_ztf_alert_result": AssetIn(key=bronze_raw_ztf_alert.key)},
+    metadata={
+        "data_zone": "silver",
+        "source_asset": bronze_raw_ztf_alert.key.to_user_string(),
+        "input_format": "parquet",
+        "output_format": "iceberg_table",
+        "output_storage": "s3 (via iceberg)",
+    },
 )
 def silver_fact_detection(
     context: AssetExecutionContext,
@@ -94,14 +95,12 @@ def silver_fact_detection(
     pipes_config: ResourceParam[PipesConfig],
     spark_operator: ResourceParam[SparkOperatorResource],
     s3: ResourceParam[S3Resource],
-    bronze_ztf_alert_parquet_result: str,
+    bronze_raw_ztf_alert_result: str,
     config: SilverZtfFactDetectionConfig,
 ):
     """Dagster asset to run the Spark job for fact detection and Iceberg merge."""
 
-    print(bronze_ztf_alert_parquet_result)
-
-    input_uri = bronze_ztf_alert_parquet_result
+    input_uri = bronze_raw_ztf_alert_result.replace("s3://", "s3a://")
     if not input_uri or not input_uri.startswith("s3a://"):
         raise Failure(f"Received invalid input path from upstream. Expected S3 URI, got: {input_uri}")
     logger.info(f"Detection Job - Input S3 URI: {input_uri}")
@@ -213,6 +212,9 @@ def silver_fact_detection(
             "spark.sql.adaptive.enabled": "true",
             "spark.sql.adaptive.coalescePartitions.enabled": "true",
             "spark.dynamicAllocation.shuffleTracking.enabled": "true",
+            # >> NEW/MODIFIED CONFIGS FOR OPTIMIZATION <<
+            "spark.sql.files.maxPartitionBytes": "512m", # Group small files during read
+            "spark.sql.adaptive.coalescePartitions.minPartitionNum": "1", # Prevent over-coalescing
             # Apply Overrides from Config
             "spark.executor.memoryOverhead": config.executor_memory_overhead,
             "spark.sql.shuffle.partitions": config.shuffle_partitions,
