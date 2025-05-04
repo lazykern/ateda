@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "spark-thrift-server.fullname" . }}
+  labels:
+    {{- include "spark-thrift-server.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: thrift
+      protocol: TCP
+      name: thrift
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
+    - port: {{ .Values.service.sparkUiPort | default 4040 }}
+      targetPort: 4040
+      protocol: TCP
+      name: spark-ui
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.sparkUiNodePort }}
+      nodePort: {{ .Values.service.sparkUiNodePort }}
+      {{- end }}
+  selector:
+    {{- include "spark-thrift-server.selectorLabels" . | nindent 4 }}

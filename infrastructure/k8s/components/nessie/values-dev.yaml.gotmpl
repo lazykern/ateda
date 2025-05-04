@@ -30,10 +30,10 @@ resources:
 catalog:
   enabled: true
   iceberg:
-    defaultWarehouse: "ateda_silver"
+    defaultWarehouse: "ateda_warehouse"
     warehouses:
-    - name: ateda_silver
-      location: s3://ateda-silver/
+    - name: ateda_warehouse
+      location: s3://ateda-warehouse/
       configDefaults: {}
       configOverrides: {}
   storage:
@@ -42,7 +42,7 @@ catalog:
         region: us-east-1
         endpoint: "http://ateda-minio-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:9000"
         # endpoint used for the Nessie server.
-        # externalEndpoint: ~
+        externalEndpoint: "http://localhost:9000"
         # -- Whether to use path-style access. Optional; if not provided, the default is used. If
         # true, path-style access will be used, as in: https://<domain>/<bucket>. If false, a
         # virtual-hosted style will be used instead, as in: https://<bucket>.<domain>.

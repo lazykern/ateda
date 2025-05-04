@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "spark-thrift-server.fullname" . }}
+  labels:
+    {{- include "spark-thrift-server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "spark-thrift-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "spark-thrift-server.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "spark-thrift-server.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Add initContainer to create the logs directory
+      initContainers:
+        - name: create-spark-logs-dir
+          image: busybox:latest # Use a minimal image
+          # Command now operates directly on the mount point
+          command: ["sh", "-c", "mkdir -p /opt/spark/logs && chmod -R 777 /opt/spark/logs"]
+          securityContext:
+            runAsUser: 0 # Ensure this runs as root
+          volumeMounts:
+            # Mount the specific log volume
+            - name: spark-logs-volume 
+              mountPath: /opt/spark/logs
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Use the documented start script and pass master directly
+          # Then tail -f to keep container alive
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              /opt/spark/sbin/start-thriftserver.sh --master k8s://https://kubernetes.default.svc && \
+              tail -f /dev/null
+          ports:
+            - name: thrift
+              containerPort: 10000
+              protocol: TCP
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 1Gi
+          env:
+            {{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            # Explicitly set SPARK_CONF_DIR to ensure spark-defaults.conf is loaded
+            - name: SPARK_CONF_DIR
+              value: "/opt/spark/conf"
+          volumeMounts:
+            - name: spark-defaults
+              mountPath: /opt/spark/conf/spark-defaults.conf
+              subPath: spark-defaults.conf
+            # Mount the specific log volume
+            - name: spark-logs-volume
+              mountPath: /opt/spark/logs
+      volumes:
+        - name: spark-defaults
+          configMap:
+            name: {{ include "spark-thrift-server.fullname" . }}-spark-defaults
+        # Define the specific log volume
+        - name: spark-logs-volume
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

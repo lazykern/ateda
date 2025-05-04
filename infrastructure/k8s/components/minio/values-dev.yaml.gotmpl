@@ -18,25 +18,21 @@ users:
 # Persistence configuration
 persistence:
   enabled: true
-  size: 10Gi
+  size: 30Gi
   # accessMode: ReadWriteOnce # Default is usually fine
   # storageClass: "-" # Use default storage class in Kind
-
 
 # Define buckets to be created by the post-install hook job
 # NOTE: Helmfile needs access to these environment variables during execution,
 # or you must replace e.g., "${S3_LANDING_BUCKET}" with the actual static name.
 buckets:
-  - name: "ateda-bronze"
+  - name: "ateda-landing"
     policy: none
     purge: false
-  - name: "ateda-silver"
+  - name: "ateda-cutout"
     policy: none
     purge: false
-  - name: "ateda-gold"
-    policy: none
-    purge: false
-  - name: "ateda-code"
+  - name: "ateda-warehouse"
     policy: none
     purge: false
   - name: "dagster-pipes"
@@ -57,13 +53,14 @@ consoleService:
 # Resource requests/limits for the Minio pod
 resources:
   requests:
-    memory: 2048Mi
-    cpu: "1000m"
+    memory: 1024Mi
+    cpu: 2
   limits:
-    memory: 4096Mi
-    cpu: "2000m"
+    memory: 8192Mi
+    cpu: 6
 
 # Disable Prometheus ServiceMonitor if not needed
 metrics:
   serviceMonitor:
-    enabled: false 
+    enabled: false
+

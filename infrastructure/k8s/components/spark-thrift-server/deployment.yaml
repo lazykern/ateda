@@ -1,0 +1,36 @@
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: spark-thrift-server
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: spark-thrift-server
+      template:
+        metadata:
+          labels:
+            app: spark-thrift-server
+        spec:
+          serviceAccountName: <your-thrift-service-account-name>
+          containers:
+          - name: thrift-server
+            image: ateda-spark-thrift-server:latest
+            command: ["/bin/bash", "-c", "/opt/spark/sbin/start-thriftserver.sh && tail -f /dev/null"] # Keep container running
+            ports:
+            - containerPort: 10000 # Default Thrift port
+            - containerPort: 4040  # Spark UI (optional)
+            resources:
+              requests:
+                cpu: "1"
+                memory: "2Gi"
+              limits:
+                cpu: "2"
+                memory: "4Gi"
+            volumeMounts:
+            - name: spark-config-volume
+              mountPath: /opt/spark/conf
+          volumes:
+          - name: spark-config-volume
+            configMap:
+              name: spark-thrift-defaults # Name of your ConfigMap

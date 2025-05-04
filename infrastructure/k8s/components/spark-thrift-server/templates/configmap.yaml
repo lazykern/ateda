@@ -1,0 +1,20 @@
+{{- /*
+Helper template to generate Spark default configurations.
+*/ -}}
+{{- define "spark-thrift-server.spark-defaults" -}}
+{{- range $key, $value := .Values.sparkConf }}
+{{ $key }} {{ $value }}
+{{- end }}
+{{- end -}}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "spark-thrift-server.fullname" . }}-spark-defaults
+  labels:
+    {{- include "spark-thrift-server.labels" . | nindent 4 }}
+data:
+  spark-defaults.conf: |
+    # Set driver host to the headless service DNS name
+    spark.driver.host {{ include "spark-thrift-server.fullname" . }}-driver-headless.{{ .Release.Namespace }}.svc.cluster.local
+    {{- include "spark-thrift-server.spark-defaults" . | nindent 4 }}

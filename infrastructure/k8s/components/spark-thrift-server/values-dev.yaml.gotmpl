@@ -1,0 +1,79 @@
+# infrastructure/k8s/components/spark-thrift-server/values-dev.yaml.gotmpl
+
+# Inherit default values, override specific ones for dev
+
+image:
+  repository: ghcr.io/lazykern/ateda-spark-runtime # Use custom image from GHCR
+  tag: latest # Use the latest tag
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 10000
+  sparkUiPort: 4040
+  nodePort: 30100
+  sparkUiNodePort: 30404
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+# Spark configurations populated from helmfile values (secrets.yaml, etc.)
+sparkConf:
+  spark.master: "k8s://https://kubernetes.default.svc"
+  spark.kubernetes.namespace: "{{ .Values.namespace }}"
+  spark.kubernetes.authenticate.driver.serviceAccountName: "ateda-spark-thrift-server-{{ .Values.environment }}"
+  spark.kubernetes.container.image: "ghcr.io/lazykern/ateda-spark-runtime:latest" # Use the static image path directly
+  # S3 Configuration (using internal Minio service name)
+  spark.hadoop.fs.s3a.endpoint: "http://ateda-minio-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:9000"
+  spark.hadoop.fs.s3a.access.key: "{{ .Values.minio.rootUser }}"
+  spark.hadoop.fs.s3a.secret.key: "{{ .Values.minio.rootPassword }}"
+  spark.hadoop.fs.s3a.path.style.access: "true"
+  spark.hadoop.fs.s3a.impl: "org.apache.hadoop.fs.s3a.S3AFileSystem"
+  spark.hadoop.fs.s3a.aws.credentials.provider: "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+  spark.hadoop.fs.s3a.connection.ssl.enabled: "false"
+  spark.hadoop.fs.s3a.connection.maximum: "200"
+  spark.hadoop.fs.s3a.fast.upload: "true"
+  spark.hadoop.fs.s3a.committer.magic.enabled: "true"
+  spark.hadoop.mapreduce.outputcommitter.factory.scheme.s3a: "org.apache.hadoop.fs.s3a.commit.S3ACommitterFactory"
+  spark.sql.sources.commitProtocolClass: "org.apache.spark.internal.io.cloud.PathOutputCommitProtocol"
+  spark.sql.parquet.output.committer.class: "org.apache.spark.internal.io.cloud.BindingParquetOutputCommitter"
+  spark.hadoop.fs.s3a.committer.name: "magic"
+
+  # Iceberg / Nessie Configuration (using internal Nessie service name)
+  spark.sql.extensions: "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions"
+  spark.sql.defaultCatalog: "ateda_warehouse"
+  spark.sql.catalog.ateda_warehouse: "org.apache.iceberg.spark.SparkCatalog"
+  spark.sql.catalog.ateda_warehouse.catalog-impl: "org.apache.iceberg.rest.RESTCatalog"
+  spark.sql.catalog.ateda_warehouse.uri: "http://ateda-nessie-{{ .Values.environment }}.{{ .Values.namespace }}.svc.cluster.local:19120/iceberg"
+  spark.sql.catalog.ateda_warehouse.warehouse: "ateda_warehouse"
+
+  # Other Spark settings
+  spark.driver.memory: "4g"
+  spark.executor.memory: "6g"
+  spark.executor.memoryOverhead: "1g"
+  spark.serializer: "org.apache.spark.serializer.KryoSerializer"
+  spark.local.dir: "/tmp/spark-local" # Mount an emptyDir potentially
+  spark.sql.shuffle.partitions: "200" # Default from notes
+  spark.sql.adaptive.enabled: "true"
+  spark.sql.adaptive.coalescePartitions.enabled: "true"
+  # Tell Thrift Server to bind to all interfaces
+  hive.server2.thrift.bind.host: "0.0.0.0"
+  spark.sql.thriftServer.incrementalCollect: "true"
+
+# Environment variables if needed
+env: []
+# - name: MY_ENV_VAR
+#   value: "some_value"
+
+# Example: Mount an emptyDir for spark.local.dir if needed
+# Add to deployment.yaml volumes:
+#         - name: spark-local-dir
+#           emptyDir: {}
+# Add to deployment.yaml container volumeMounts:
+#             - name: spark-local-dir
+#               mountPath: /tmp/spark-local 

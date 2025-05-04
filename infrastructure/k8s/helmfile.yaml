@@ -21,8 +21,6 @@ repositories:
     url: https://charts.min.io/
   - name: starrocks
     url: https://starrocks.github.io/starrocks-kubernetes-operator
-  - name: spark-operator
-    url: https://kubeflow.github.io/spark-operator
   - name: metrics-server-repo
     url: https://kubernetes-sigs.github.io/metrics-server/
 
@@ -102,6 +100,13 @@ releases:
         - "{{ .Values.namespace }}"
         - "--type=json"
         - "-p=[{\"op\": \"replace\", \"path\": \"/spec/ports/0/nodePort\", \"value\": 30120}]"
+      - events: ["postuninstall"]
+        showlogs: true
+        command: "kubectl"
+        args:
+          - "delete"
+          - "service"
+          - "ateda-nessie-{{ .Values.environment }}"
 
   - name: "ateda-minio-{{ .Values.environment }}"
     namespace: "{{ .Values.namespace }}"
@@ -124,15 +129,6 @@ releases:
       - "ateda-minio-{{ .Values.environment }}"
       # Depends on Nessie mainly for the minio credential secret hook
       - "ateda-nessie-{{ .Values.environment }}" 
-
-  # --- Spark Operator ---
-  - name: "spark-operator"
-    namespace: "spark-operator"
-    createNamespace: true
-    chart: spark-operator/spark-operator
-    version: "2.1.1"
-    values:
-      - "./components/spark-operator/values-{{ .Values.environment }}.yaml.gotmpl"
 
   # --- Metrics Server --- # Added for node/pod resource monitoring
   - name: "metrics-server"

@@ -1,0 +1,19 @@
+# templates/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "spark-thrift-server.fullname" . }}-role
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spark-thrift-server.labels" . | nindent 4 }}
+rules:
+  # Permissions required by Spark driver/application to manage executor pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "get", "list", "delete"] 

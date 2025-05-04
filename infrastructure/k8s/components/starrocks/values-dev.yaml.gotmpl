@@ -220,7 +220,7 @@ starrocks:
     #   2. the values in their own spec will replace all the values in this field, not merge.
     componentValues:
       image:
-        tag: "3.3-latest"
+        tag: "3.4-latest"
       # hostAliases allows adding entries to /etc/hosts inside the containers.
       hostAliases: []
         # - ip: "127.0.0.1"
@@ -423,12 +423,12 @@ starrocks:
     # resources for fe pod.
     resources:
       requests:
-        cpu: 4
-        memory: 1Gi
+        cpu: 3
+        memory: 3Gi
       # If you want to remove one resource limit, e.g. cpu, you can set it to cpu: "unlimited".
       limits:
-        cpu: 8
-        memory: 2Gi
+        cpu: 5
+        memory: 5Gi
     # fe storageSpec for persistent metadata.
     # Note: Once set, the following fields will not be allowed to be modified.
     storageSpec:
@@ -446,7 +446,7 @@ starrocks:
       storageClassName: ""
       # the persistent volume size for data.
       # fe container stop running if the disk free space which the fe meta directory residents, is less than 5Gi.
-      storageSize: 10Gi
+      ntorageSize: 10Gi
       # If storageMountPath is empty, the storageMountPath will be set to /opt/starrocks/fe/meta.
       storageMountPath: ""
       # If not set will use the value of the storageClassName field.
@@ -751,7 +751,7 @@ starrocks:
         memory: 8Gi
       # If you want to remove one resource limit, e.g. cpu, you can set it to cpu: "unlimited".
       limits:
-        cpu: 8
+        cpu: 4
         memory: 8Gi
     # specify storageclass name and request size.
     # Note: Once set, the following fields will not be allowed to be modified.
@@ -1059,11 +1059,11 @@ starrocks:
     # resources for be pod.
     resources:
       requests:
-        cpu: 4
+        cpu: 1
         memory: 2Gi
       # If you want to remove one resource limit, e.g. cpu, you can set it to cpu: "unlimited".
       limits:
-        cpu: 8
+        cpu: 2
         memory: 4Gi
     # be storageSpec for persistent storage.
     # Note: Once set, the following fields will not be allowed to be modified.

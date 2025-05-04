@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "spark-thrift-server.fullname" . }}-driver-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spark-thrift-server.labels" . | nindent 4 }}
+    # Add a specific label for this service if needed, or rely on common labels
+spec:
+  clusterIP: None # This makes it headless
+  ports:
+    # Port definition is technically optional for headless service used for DNS,
+    # but can be useful for reference. Spark driver uses a random high port by default.
+    # We don't strictly need to expose it here unless something else needs it.
+    - name: driver-rpc-port # Placeholder name
+      port: 7077 # Placeholder port, Spark driver chooses dynamically
+      targetPort: 7077 # Placeholder port
+  selector:
+    # Selects the driver pod (same labels as the main service and deployment)
+    {{- include "spark-thrift-server.selectorLabels" . | nindent 4 }} 

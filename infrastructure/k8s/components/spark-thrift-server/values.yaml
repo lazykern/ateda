@@ -1,0 +1,101 @@
+# Default values for spark-thrift-server chart.
+
+replicaCount: 1
+
+image:
+  # repository: your-docker-registry/ateda-spark # Replace with your actual image repo if needed
+  repository: apache/spark # Using public for now, adjust if you use a custom image
+  pullPolicy: IfNotPresent
+  # tag: latest # Or pin to a specific tag matching your Dockerfile base
+  tag: "3.5.5-python3" # Matching your Dockerfile base
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsUser: 0 # Run the whole pod as root
+  # fsGroup: 2000
+
+securityContext:
+   capabilities:
+     drop:
+     - ALL
+   readOnlyRootFilesystem: false # Spark needs to write logs/temp files
+   runAsNonRoot: false # Spark often runs better as root or a specific user with permissions
+   # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 10000 # Default Spark Thrift Server port
+  sparkUiPort: 4040 # Default Spark UI port
+  # nodePort: 30100 # Uncomment and set if type is NodePort
+  # sparkUiNodePort: 30404 # Uncomment and set if type is NodePort
+
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 1000m
+  #   memory: 2Gi
+  # requests:
+  #   cpu: 500m
+  #   memory: 1Gi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Spark configurations will be passed here from helmfile
+sparkConf: {}
+  # Example structure (these will be populated from helmfile):
+  # spark.master: k8s://https://kubernetes.default.svc
+  # spark.hadoop.fs.s3a.endpoint: "http://minio.default.svc:9000"
+  # spark.hadoop.fs.s3a.access.key: "minioadmin"
+  # spark.hadoop.fs.s3a.secret.key: "minioadmin"
+  # spark.sql.catalog.ateda_bronze.uri: "http://nessie.default.svc:19120/iceberg"
+  # ... other configs
+
+# Environment variables for the pod
+env: []
+  # - name: SPARK_MASTER_URL
+  #   value: "k8s://https://kubernetes.default.svc"
