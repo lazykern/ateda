@@ -7,8 +7,10 @@ import shutil
 import sys
 import hashlib
 import urllib.request
-import multiprocessing
 import logging
+import json
+from avro.datafile import DataFileReader
+from avro.io import DatumReader
 
 from datetime import datetime
 
@@ -17,13 +19,14 @@ from dagster import (
     get_dagster_logger,
     AssetExecutionContext,
     ResourceParam,
+    Config,
 )
 from dagster_aws.s3 import S3Resource
-import duckdb
 
 from ...resources import S3Config
 from ...partitions import daily_partitions
 from ...resources import AWSConfig
+from dagster_pipes import open_dagster_pipes
 
 ZTF_ALERT_ARCHIVE_BASE_URL = "https://ztf.uw.edu/alerts/public"
 MD5SUMS_URL = f"{ZTF_ALERT_ARCHIVE_BASE_URL}/MD5SUMS"
@@ -226,94 +229,17 @@ def _download_and_verify_archive(
 
     return temp_file_path, not download_needed
 
+class BronzeRawZtfAlertConfig(Config):
+    concurrency: int = 32
+    num_alert_writers: int = 10
+    num_cutout_writers: int = 2000
+    alert_writer_buffer_size: int = 1024
+    cutout_writer_buffer_size: int = 1024
+    s3_bucket_alerts: str = "ateda-landing"
+    s3_prefix_alerts: str = "alerts/"
+    s3_bucket_cutout: str = "ateda-cutout"
+    s3_prefix_cutout: str = "cutouts/"
 
-def _process_batch(
-    batch_files: list[Path],
-    batch_idx: int,
-    s3_base_path: str,
-    aws_key: str,
-    aws_secret: str,
-    s3_endpoint_url: str,
-    s3_use_ssl: str,
-) -> str:
-    """
-    Processes a single batch of Avro files using DuckDB and uploads to S3.
-    Designed to be run in a separate process (multiprocessing.Pool).
-
-    Args:
-        batch_files: List of Path objects for the Avro files in this batch.
-        batch_idx: The index of this batch (for naming output file).
-        s3_base_path: The base S3 path (e.g., s3://bucket/prefix) without the filename.
-        aws_key: AWS Access Key ID.
-        aws_secret: AWS Secret Access Key.
-        s3_endpoint_url: S3 endpoint URL (e.g., host:port).
-        s3_use_ssl: Whether to use SSL ('true' or 'false').
-
-    Returns:
-        The S3 path of the generated Parquet file.
-
-    Raises:
-        Exception: If DuckDB connection, secret creation, or COPY command fails.
-    """
-    # Use standard Python logging for multiprocessing workers
-    worker_logger = logging.getLogger(f"process_batch_{batch_idx}")
-    worker_logger.setLevel(logging.INFO)  # Adjust level as needed
-    # Basic handler, configure more robustly if needed (e.g., QueueHandler)
-    if not worker_logger.hasHandlers():
-        handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
-        worker_logger.addHandler(handler)
-
-    target_s3_path = f"{s3_base_path}/part_{batch_idx:05d}.parquet"
-    worker_logger.info(
-        f"Processing batch {batch_idx} ({len(batch_files)} files) -> {target_s3_path}"
-    )
-
-    conn = duckdb.connect(database=":memory:", read_only=False)
-    try:
-        # Configure DuckDB for S3 access
-        conn.execute("INSTALL httpfs;")
-        conn.execute("LOAD httpfs;")
-
-        secret_sql = f"""
-        CREATE OR REPLACE SECRET secret (
-            TYPE S3,
-            PROVIDER CONFIG,
-            ENDPOINT '{s3_endpoint_url}',
-            KEY_ID '{aws_key}',
-            SECRET '{aws_secret}',
-            USE_SSL {s3_use_ssl},
-            URL_STYLE 'path'
-        );
-        """
-        worker_logger.debug(f"Creating DuckDB S3 Secret for batch {batch_idx}")
-        conn.execute(secret_sql)
-
-        # Prepare and execute the COPY command
-        file_list_str = ", ".join([f"'{str(file.resolve())}'" for file in batch_files])
-        copy_sql = f"""
-            COPY (SELECT * FROM read_avro([{file_list_str}]))
-            TO '{target_s3_path}' (FORMAT PARQUET, COMPRESSION ZSTD);
-        """
-        worker_logger.info(f"Executing DuckDB COPY for batch {batch_idx}")
-        conn.execute(copy_sql)
-        worker_logger.info(f"Finished DuckDB COPY for batch {batch_idx}")
-        return target_s3_path
-    except Exception as e:
-        worker_logger.error(
-            f"Error processing batch {batch_idx} -> {target_s3_path}: {e}",
-            exc_info=True,
-        )
-        # Re-raise the exception so the main process knows about the failure
-        raise Exception(f"Failed to process batch {batch_idx}: {e}") from e
-    finally:
-        conn.close()
-
-
-# --- Assets ---
 @asset(
     name="bronze_raw_ztf_alert",
     key_prefix=["bronze"],
@@ -331,7 +257,7 @@ def _process_batch(
 )
 def bronze_raw_ztf_alert(
     context: AssetExecutionContext,
-    s3: ResourceParam[S3Resource],
+    config: BronzeRawZtfAlertConfig,
     s3_config: ResourceParam[S3Config],
     aws_config: ResourceParam[AWSConfig],
 ) -> str:
@@ -341,16 +267,10 @@ def bronze_raw_ztf_alert(
     filename = f"ztf_public_{filename_date_str}.tar.gz"
     archive_url = f"{ZTF_ALERT_ARCHIVE_BASE_URL}/{filename}"
 
-    bucket = s3_config.bronze_bucket
-    if not bucket:
-        logger.error("S3_BRONZE_BUCKET environment variable not set.")
-        raise ValueError("S3_BRONZE_BUCKET environment variable not set.")
-
     prefix = f"alerts/year={date_obj.year:04d}/month={date_obj.month:02d}/day={date_obj.day:02d}"
-    s3_path = f"s3://{bucket}/{prefix}"
+    s3_path = f"s3://{config.s3_bucket_alerts}/{config.s3_prefix_alerts}{prefix}"
 
     # Construct predictable temporary directory path based on asset key and partition
-    # Sanitize asset key for directory name
     sanitized_asset_key = context.asset_key.to_user_string().replace("/", "_")
     base_asset_temp_dir = Path("data/") / sanitized_asset_key
     temp_dir_path = base_asset_temp_dir / f"download_{partition_date_str}"
@@ -359,10 +279,7 @@ def bronze_raw_ztf_alert(
     expected_md5 = expected_md5s.get(filename)
 
     try:
-        # Ensure base asset temp directory exists (create if needed)
         base_asset_temp_dir.mkdir(parents=True, exist_ok=True)
-
-        # Download and verify the archive
         downloaded_file_path, download_skipped = _download_and_verify_archive(
             archive_url=archive_url,
             temp_dir_path=temp_dir_path,
@@ -374,12 +291,10 @@ def bronze_raw_ztf_alert(
         extract_dir = temp_dir_path / "extracted"
         logger.info(f"Extracting {downloaded_file_path} to {extract_dir}")
         try:
-            extract_dir.mkdir(exist_ok=True)  # Create extraction subdir
+            extract_dir.mkdir(exist_ok=True)
             with tarfile.open(downloaded_file_path, "r:gz") as tar:
-                tar.extractall(path=extract_dir)  # Extract into subdir
-            alert_files = list(
-                extract_dir.glob("*.avro")  # Glob within subdir
-            )  # Re-list after extraction
+                tar.extractall(path=extract_dir)
+            alert_files = list(extract_dir.glob("*.avro"))
             logger.info(
                 f"Extraction successful. Found {len(alert_files)} .avro files in {extract_dir}."
             )
@@ -387,165 +302,92 @@ def bronze_raw_ztf_alert(
             logger.error(
                 f"Failed to extract tarfile {downloaded_file_path}: {e}. It might be corrupted."
             )
-            # Keep the dir for inspection, but raise to fail the asset
             raise Exception(f"Tarfile extraction failed: {e}") from e
         except Exception as e:
             logger.error(f"An unexpected error occurred during extraction: {e}")
-            raise  # Re-raise other unexpected errors
+            raise
 
-        # --- Compact with duckdb then upload to S3 ---
         if not alert_files:
             logger.warning(
                 f"No .avro files found in {extract_dir} after download/extraction steps."
             )
-            # Assume empty archive for the day is possible, return success
-            # If this should be an error, raise an exception here instead.
             return s3_path
 
-        logger.info(
-            f"Processing {len(alert_files)} avro files from {extract_dir} and uploading to {s3_path}/part_*.parquet"
-        )
-        batch_size = 256 * 1024 * 1024  # 256 MiB
-        batches = []
-        curr_size = 0
-        total_size = 0
-        batch_files = []
-        for file in alert_files:
-            file_size = file.stat().st_size
-            total_size += file_size
-            if batch_files and curr_size + file_size > batch_size:
-                batches.append(batch_files)
-                batch_files = [file]  # Start new batch
-                curr_size = file_size
-            else:
-                batch_files.append(file)
-                curr_size += file_size
-        if batch_files:
-            batches.append(batch_files)
+        schema_file = None
+        cutout_fields = {"cutoutScience", "cutoutTemplate", "cutoutDifference"}
+        for avro_file in alert_files:
+            with open(avro_file, "rb") as f:
+                reader = DataFileReader(f, DatumReader())
+                schema_str = reader.get_meta("avro.schema").decode()
+                schema = json.loads(schema_str)
+                if "fields" in schema:
+                    schema["fields"] = [
+                        field for field in schema["fields"]
+                        if field.get("name") not in cutout_fields
+                    ]
+                schema_file = extract_dir / "schema_nocutout.avsc"
+                with open(schema_file, "w") as sf:
+                    sf.write(json.dumps(schema))
+                break
 
-        if not batches:
-            logger.info(
-                f"No data batches to process for {partition_date_str} despite finding avro files (this shouldn't happen). Returning success for safety."
-            )
-            return s3_path
+        if not schema_file:
+            logger.error("Could not extract schema from Avro files.")
+            raise Exception("Schema extraction failed.")
 
-        # --- Extract Config for Parallel Processing ---
-        aws_key = aws_config.access_key_id
-        aws_secret = aws_config.secret_access_key
-        s3_endpoint_host = s3_config.endpoint_host
-        s3_endpoint_port = s3_config.endpoint_port
-        # Ensure use_ssl is fetched correctly and converted to string
-        s3_use_ssl = str(getattr(s3_config, "use_ssl", False)).lower()
+        ingestor_bin = "ateda-ingestor"
+        alert_writer_buffer_size = config.alert_writer_buffer_size
+        concurrency = config.concurrency
+        num_alert_writers = config.num_alert_writers
+        cutout_writer_buffer_size = config.cutout_writer_buffer_size
+        num_cutout_writers = config.num_cutout_writers
+        s3_bucket_cutout = config.s3_bucket_cutout
+        s3_prefix_cutout = config.s3_prefix_cutout
 
-        if not all([aws_key, aws_secret, s3_endpoint_host, s3_endpoint_port]):
-            raise ValueError("Missing required AWS/S3 configuration for DuckDB Secret.")
-
-        endpoint_url = f"{s3_endpoint_host}:{s3_endpoint_port}"
-
-        # --- Parallel Processing with DuckDB using multiprocessing.Pool ---
-        logger.info(
-            f"Starting parallel upload of {len(batches)} batches to {s3_path}/ using multiprocessing.Pool"
-        )
-        results = {}  # Store results keyed by batch_idx
-        pool = None  # Initialize pool variable
-
-        # Limit the number of concurrent worker processes
-        max_worker_processes = 4
-        logger.info(f"Using up to {max_worker_processes} worker processes.")
-
-        try:
-            pool = multiprocessing.Pool(processes=max_worker_processes)
-            async_results = []
-            for batch_idx, batch in enumerate(batches):
-                # Submit tasks using apply_async
-                res = pool.apply_async(
-                    _process_batch,
-                    args=(
-                        batch,
-                        batch_idx,
-                        s3_path,
-                        aws_key,
-                        aws_secret,
-                        endpoint_url,
-                        s3_use_ssl,
-                    ),
-                )
-                async_results.append((batch_idx, res))
-
-            # Wait for results with fail-fast logic
-            num_completed = 0
-            total_batches = len(async_results)
-            processed_indices = set()
-
-            while num_completed < total_batches:
-                remaining_results = [
-                    (idx, r) for idx, r in async_results if idx not in processed_indices
-                ]
-                if not remaining_results:
-                    break  # Should not happen if num_completed < total_batches, but safety break
-
-                # Check one result at a time with a short timeout
-                # This allows faster detection of failure than iterating completed()
-                idx, async_result = remaining_results[0]
-                try:
-                    # Use a timeout to avoid blocking indefinitely if a task hangs
-                    result_path = async_result.get(timeout=1.0)  # Check every second
-                    results[idx] = result_path
-                    logger.info(f"Successfully processed batch {idx} -> {result_path}")
-                    processed_indices.add(idx)
-                    num_completed += 1
-                except multiprocessing.TimeoutError:
-                    # Task not finished yet, continue checking others or loop again
-                    pass
-                except Exception as exc:
-                    # A task failed!
-                    logger.error(
-                        f"Batch {idx} generated an exception: {exc}. Terminating pool."
-                    )
-                    pool.terminate()  # Forcefully stop other workers
-                    pool.join()  # Wait for workers to terminate
-                    # Re-raise the first exception encountered to fail the asset
-                    raise Exception(
-                        f"Processing failed for batch {idx}: {exc}"
-                    ) from exc
-
-            # If loop finishes without exceptions, close pool cleanly
-            pool.close()
-            pool.join()
-            logger.info(f"Finished processing all {len(results)} batches successfully.")
-
-        except (
-            Exception
-        ) as main_exc:  # Catch exceptions raised within the try (incl. re-raised ones)
-            logger.error(f"An error occurred during parallel processing: {main_exc}")
-            if pool:
-                # Ensure pool is terminated even if error happened outside the get() loop
-                pool.terminate()
-                pool.join()
-            raise  # Re-raise the exception to fail the asset
-        finally:
-            # Final safety net for pool cleanup if something unexpected happened
-            if pool and not pool._state == multiprocessing.pool.TERMINATE:
-                try:
-                    pool.terminate()
-                    pool.join()
-                except Exception as pool_term_exc:
-                    logger.error(
-                        f"Error during final pool termination: {pool_term_exc}"
-                    )
+        # Open dagster pipes context and set env var for subprocess
+        with open_dagster_pipes() as pipes:
+            env = os.environ.copy()
+            env["DAGSTER_PIPES_CONTEXT"] = pipes.get_bootstrap_env_json()
+            cmd = [
+                ingestor_bin,
+                "--input-dir", str(extract_dir),
+                "--alert-schema-file", str(schema_file),
+                "--temp-dir", str(temp_dir_path / "ingestor_tmp"),
+                "--aws-access-key-id", aws_config.access_key_id,
+                "--aws-secret-access-key", aws_config.secret_access_key,
+                "--s3-endpoint-url", s3_config.endpoint_url,
+                "--s3-bucket-alerts", config.s3_bucket_alerts,
+                "--s3-prefix-alerts", config.s3_prefix_alerts,
+                "--file-prefix", "ztf_alert",
+                "--partition-name", "observation_date",
+                "--partition-value", partition_date_str,
+                "--alert-writer-buffer-size", str(alert_writer_buffer_size),
+                "--concurrency", str(concurrency),
+                "--num-alert-writers", str(num_alert_writers),
+                "--s3-bucket-cutout", s3_bucket_cutout,
+                "--s3-prefix-cutout", s3_prefix_cutout,
+                "--cutout-writer-buffer-size", str(cutout_writer_buffer_size),
+                "--num-cutout-writers", str(num_cutout_writers),
+            ]
+            logger.info(f"Running ateda-ingestor with dagster-pipes: {' '.join(cmd)}")
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+            for line in proc.stdout:
+                logger.info(f"[ateda-ingestor] {line.rstrip()}")
+            retcode = proc.wait()
+            if retcode != 0:
+                logger.error(f"ateda-ingestor failed with exit code {retcode}")
+                raise Exception(f"ateda-ingestor failed with exit code {retcode}")
 
         context.add_output_metadata(
             {
-                "num_batches": len(batches),
                 "num_files": len(alert_files),
-                "total_size": total_size,
                 "source_url": archive_url,
                 "output_path": s3_path,
                 "download_skipped": download_skipped,
+                "ingestor": "ateda-ingestor (alert+cutout)",
             }
         )
 
-        logger.info(f"Successfully processed and uploaded files to {s3_path}")
+        logger.info(f"Successfully processed and uploaded alert records to {s3_path}")
         return s3_path
 
     except Exception as e:
@@ -560,10 +402,9 @@ def bronze_raw_ztf_alert(
         raise
 
     finally:
-        # Cleanup *only* if the directory exists AND no exception occurred/is being handled
         if temp_dir_path and temp_dir_path.exists():
             current_exception = sys.exc_info()[1]
-            if current_exception is None:  # No exception occurred or is being handled
+            if current_exception is None:
                 try:
                     logger.info(
                         f"Processing successful. Cleaning up temporary directory: {temp_dir_path}"
@@ -571,7 +412,34 @@ def bronze_raw_ztf_alert(
                     shutil.rmtree(temp_dir_path)
                 except Exception as cleanup_error:
                     logger.error(
-                        f"Error during temporary directory cleanup {temp_dir_path}: {cleanup_error}",
+                        f"Error during successful temporary directory cleanup {temp_dir_path}: {cleanup_error}",
                         exc_info=True,
                     )
-            # else: An exception occurred. The 'except' block logged it and we leave the directory.
+            else:
+                logger.warning(
+                    f"Failure detected. Performing selective cleanup of {temp_dir_path}, keeping the downloaded archive."
+                )
+                extract_dir_cleanup = temp_dir_path / "extracted"
+                schema_file_cleanup = extract_dir_cleanup / "schema_nocutout.avsc"
+                ingestor_tmp_dir_cleanup = temp_dir_path / "ingestor_tmp"
+
+                if extract_dir_cleanup.exists():
+                    try:
+                        logger.info(f"Removing extracted files directory: {extract_dir_cleanup}")
+                        shutil.rmtree(extract_dir_cleanup)
+                    except Exception as cleanup_error:
+                        logger.error(f"Error removing extracted files directory {extract_dir_cleanup} during failure cleanup: {cleanup_error}", exc_info=True)
+
+                if schema_file_cleanup.exists():
+                    try:
+                        logger.info(f"Removing schema file: {schema_file_cleanup}")
+                        schema_file_cleanup.unlink()
+                    except Exception as cleanup_error:
+                         logger.error(f"Error removing schema file {schema_file_cleanup} during failure cleanup: {cleanup_error}", exc_info=True)
+
+                if ingestor_tmp_dir_cleanup.exists():
+                     try:
+                         logger.info(f"Removing ingestor temporary directory: {ingestor_tmp_dir_cleanup}")
+                         shutil.rmtree(ingestor_tmp_dir_cleanup)
+                     except Exception as cleanup_error:
+                         logger.error(f"Error removing ingestor temporary directory {ingestor_tmp_dir_cleanup} during failure cleanup: {cleanup_error}", exc_info=True)
