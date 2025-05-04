@@ -183,3 +183,11 @@ cython_debug/
 *_unencrypted.yaml
 *.dec
 *.bak
+
+# Spark
+metastore_db/
+
+# DuckDB
+*.duckdb
+
+temp_processing/
