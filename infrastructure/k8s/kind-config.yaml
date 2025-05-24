@@ -34,3 +34,11 @@ nodes:
   - containerPort: 30120
     hostPort: 19120
     protocol: TCP
+  # Map host port 3000 to NodePort 30002 (for Prometheus Grafana Service)
+  - containerPort: 30002
+    hostPort: 3000 # Grafana from prometheus-stack
+    protocol: TCP
+  # Map host port 9090 to NodePort 30090 (for Prometheus Service)
+  - containerPort: 30090
+    hostPort: 9090 # Prometheus UI
+    protocol: TCP

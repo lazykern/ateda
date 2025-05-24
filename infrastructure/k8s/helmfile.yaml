@@ -23,6 +23,10 @@ repositories:
     url: https://starrocks.github.io/starrocks-kubernetes-operator
   - name: metrics-server-repo
     url: https://kubernetes-sigs.github.io/metrics-server/
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
 
 ---
 
@@ -141,3 +145,12 @@ releases:
       - args:
           - --kubelet-insecure-tls
           - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+
+  # --- Prometheus Stack --- # For monitoring
+  - name: kube-prometheus-stack
+    namespace: "monitoring" # Deploy in a dedicated monitoring namespace
+    chart: prometheus-community/kube-prometheus-stack
+    disableValidationOnInstall: true
+    version: "56.6.0" # Use a recent, stable version
+    values:
+      - "./components/prometheus/values-{{ .Values.environment }}.yaml.gotmpl"
